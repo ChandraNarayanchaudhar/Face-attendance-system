@@ -1,0 +1,7 @@
+function sa {
+    Set-Location "F:\8th\smart-attendance"
+
+    if (Test-Path ".\venv\Scripts\Activate.ps1") {
+        .\venv\Scripts\Activate.ps1
+    }
+}
