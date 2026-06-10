@@ -1,0 +1,803 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ac:#4F46E5;--acl:#EEF2FF;--acd:#3730A3;
+  --gc:#3B6D11;--gl:#EAF3DE;
+  --am:#854F0B;--aml:#FAEEDA;
+  --rd:#A32D2D;--rdl:#FCEBEB;
+  --sw:186px;--hh:48px
+}
+body{font-family:inherit;background:var(--color-background-tertiary);color:var(--color-text-primary)}
+
+/* ── LAYOUT ── */
+.app{display:flex;flex-direction:column;min-height:700px}
+.topbar{height:var(--hh);background:var(--color-background-primary);border-bottom:.5px solid var(--color-border-tertiary);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0}
+.logo{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px}
+.body{display:flex;flex:1;overflow:hidden;min-height:652px}
+.sb{width:var(--sw);background:var(--color-background-primary);border-right:.5px solid var(--color-border-tertiary);padding:8px 6px;flex-shrink:0;overflow-y:auto}
+.main{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+
+/* ── NAV ── */
+.ns{font-size:9px;font-weight:500;color:var(--color-text-tertiary);padding:9px 8px 2px;letter-spacing:.06em;text-transform:uppercase}
+.ni{display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:var(--border-radius-md);font-size:11px;color:var(--color-text-secondary);cursor:pointer;user-select:none;transition:all .12s}
+.ni:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.ni.on{font-weight:500}
+.ni.ona{background:var(--acl);color:var(--ac)}
+.ni.ons{background:var(--gl);color:var(--gc)}
+.ni i{font-size:14px}
+.nbg{margin-left:auto;font-size:9px;padding:1px 5px;border-radius:7px;font-weight:500}
+.nbg.r{background:var(--rdl);color:var(--rd)}
+.nbg.g{background:var(--gl);color:var(--gc)}
+.nbg.a{background:var(--aml);color:var(--am)}
+
+/* ── CARDS ── */
+.card{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg)}
+.ch{padding:9px 13px;border-bottom:.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ct{font-size:11px;font-weight:500;display:flex;align-items:center;gap:5px}
+.cb{padding:12px 13px}
+.row{display:flex;gap:10px}
+.col1{flex:1;display:flex;flex-direction:column;gap:10px}
+
+/* ── METRICS ── */
+.mg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.mg3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mc{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px}
+.ml{font-size:9px;color:var(--color-text-secondary);margin-bottom:2px}
+.mv{font-size:20px;font-weight:500}
+.ms{font-size:9px;color:var(--color-text-secondary);margin-top:1px}
+
+/* ── PILLS ── */
+.pill{display:inline-flex;align-items:center;gap:3px;font-size:9px;padding:2px 7px;border-radius:9px;font-weight:500;white-space:nowrap}
+.pp{background:var(--gl);color:#27500A}
+.pl{background:var(--aml);color:#633806}
+.pa{background:var(--rdl);color:#791F1F}
+.pu{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.pi{background:var(--acl);color:var(--acd)}
+.ph{background:#FEF9EE;color:#633806}
+.plive{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 9px;border-radius:10px;border:.5px solid var(--color-border-success);background:var(--color-background-success);color:var(--color-text-success)}
+.phol{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 9px;border-radius:10px;border:.5px solid #FAC775;background:#FEF9EE;color:#633806}
+.pulse{width:5px;height:5px;border-radius:50%;background:currentColor;animation:blink 1.4s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── BUTTONS ── */
+.btn{padding:4px 11px;border-radius:var(--border-radius-md);font-size:11px;cursor:pointer;font-family:inherit;font-weight:500;border:.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-primary);transition:all .12s}
+.btn:hover{background:var(--color-background-secondary)}
+.btn.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
+.btn.pri:hover{background:var(--acd)}
+.btn.grn{background:var(--gc);color:#fff;border-color:var(--gc)}
+.btn.dng{background:var(--rdl);color:var(--rd);border-color:#F7C1C1}
+.btn.warn{background:var(--aml);color:var(--am);border-color:#FAC775}
+.btn.sm{padding:3px 8px;font-size:10px}
+.btn.lg{padding:8px 20px;font-size:13px;width:100%;justify-content:center}
+
+/* ── FORM ── */
+.fg{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+.fg label{font-size:10px;color:var(--color-text-secondary)}
+.fg input,.fg select{font-size:12px}
+.inp-lg{font-size:14px;padding:10px 12px;width:100%}
+
+/* ── TABLE ── */
+.tbl{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
+.tbl th{text-align:left;padding:6px 10px;font-size:9px;font-weight:500;color:var(--color-text-secondary);border-bottom:.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.tbl td{padding:6px 10px;border-bottom:.5px solid var(--color-border-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--color-background-secondary)}
+
+/* ── MISC ── */
+.bw{display:flex;flex-direction:column;gap:6px}
+.br{display:flex;align-items:center;gap:6px}
+.bl2{width:80px;font-size:9px;color:var(--color-text-secondary);text-align:right;flex-shrink:0}
+.bt{flex:1;height:12px;background:var(--color-background-secondary);border-radius:3px;overflow:hidden}
+.bf{height:100%;border-radius:3px;font-size:8px;color:#fff;font-weight:500;padding-left:4px;display:flex;align-items:center}
+.bp{width:22px;text-align:right;font-size:9px;color:var(--color-text-secondary)}
+.dbar{height:4px;background:var(--color-background-secondary);border-radius:2px;overflow:hidden;margin-top:3px}
+.dbf{height:100%;border-radius:2px}
+.di{display:flex;align-items:center;gap:8px;padding:7px 13px;border-bottom:.5px solid var(--color-border-tertiary)}
+.di:last-child{border-bottom:none}
+.dav{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0}
+.dinf{flex:1;min-width:0}
+.dn{font-size:11px;font-weight:500}
+.dr{font-size:9px;color:var(--color-text-secondary)}
+.alrt{display:flex;align-items:flex-start;gap:7px;padding:6px 9px;border-radius:var(--border-radius-md);border:.5px solid;margin-bottom:4px;font-size:10px}
+.alrt.p{background:var(--color-background-success);border-color:var(--color-border-success);color:var(--color-text-success)}
+.alrt.u{background:var(--rdl);border-color:#F7C1C1;color:#791F1F}
+.alrt.i{background:var(--acl);border-color:#B5D4F4;color:var(--acd)}
+.alrt.w{background:var(--aml);border-color:#FAC775;color:#633806}
+.alrt.h{background:#FEF9EE;border-color:#FAC775;color:#633806}
+.at{font-weight:500;margin-bottom:1px}
+.tl{padding-left:16px;position:relative;display:flex;flex-direction:column}
+.tl::before{content:'';position:absolute;left:4px;top:8px;bottom:8px;width:1px;background:var(--color-border-tertiary)}
+.tli{position:relative;padding:4px 0 4px 10px}
+.tld{position:absolute;left:-12px;top:8px;width:7px;height:7px;border-radius:50%;border:1.5px solid}
+.tld.p{border-color:var(--gc);background:var(--gl)}
+.tld.s{border-color:var(--ac);background:var(--acl)}
+.tld.h{border-color:var(--am);background:var(--aml)}
+.tld.u{border-color:var(--rd);background:var(--rdl)}
+.tlt{font-size:10px;font-weight:500}
+.tls{font-size:9px;color:var(--color-text-secondary)}
+
+/* ── SESSION CLOCK ── */
+.sess-bar{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:10px 13px;display:flex;align-items:center;gap:10px}
+.sess-live{width:8px;height:8px;border-radius:50%;background:#3B6D11;flex-shrink:0;animation:blink 1.4s ease-in-out infinite}
+.sess-inf{flex:1;min-width:0}
+.sess-name{font-size:11px;font-weight:500}
+.sess-meta{font-size:9px;color:var(--color-text-secondary)}
+.sess-timer{font-size:14px;font-weight:500;color:var(--gc);font-variant-numeric:tabular-nums}
+.sess-prog{height:4px;background:var(--color-background-secondary);border-radius:2px;overflow:hidden;margin-top:5px}
+.sess-pfil{height:100%;border-radius:2px;background:var(--gc);transition:width .5s}
+
+/* ── HOL BANNER ── */
+.hol-banner{background:#FEF9EE;border:.5px solid #FAC775;border-radius:var(--border-radius-lg);padding:12px 14px;display:flex;align-items:center;gap:12px}
+.hol-icon{width:36px;height:36px;border-radius:8px;background:var(--aml);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+</style>
+
+<h2 class="sr-only">Smart Attendance System — full app with login screen, role-based routing (admin and student portals), holiday system, and live session clock visible in both portals.</h2>
+
+<div class="app" id="app">
+</div>
+
+<script>
+const S={
+  screen:'login',
+  role:null,
+  adminPage:'adash',
+  studentPage:'shome',
+  holiday:{active:false,name:''},
+  sessions:[
+    {id:1,code:'CS301',name:'Data Structures',teacher:'Prof. R. Kumar',room:'Room 101',start:'09:00',end:'10:00',status:'ended',present:38,late:4,absent:0,section:'A'},
+    {id:2,code:'CS302',name:'DBMS',teacher:'Prof. S. Gupta',room:'Room 204',start:'10:00',end:'11:30',status:'live',present:30,late:2,absent:6,section:'A'},
+    {id:3,code:'CS303',name:'Operating Systems',teacher:'Prof. A. Singh',room:'Room 301',start:'11:30',end:'12:30',status:'upcoming',present:0,late:0,absent:0,section:'A'},
+    {id:4,code:'CS304',name:'Comp. Networks',teacher:'Prof. D. Verma',room:'Lab 2',start:'13:00',end:'14:00',status:'upcoming',present:0,late:0,absent:0,section:'A'},
+  ],
+  holidays:[
+    {date:'2026-05-10',name:'Buddha Purnima',type:'National'},
+    {date:'2026-06-15',name:'Summer break',type:'Institution'},
+    {date:'2026-08-15',name:'Independence Day',type:'National'},
+    {date:'2026-10-02',name:'Gandhi Jayanti',type:'National'},
+  ],
+  clockInterval:null,
+  sessionSeconds:2640,
+};
+
+function render(){
+  const app=document.getElementById('app');
+  if(S.screen==='login'){app.innerHTML='';app.appendChild(loginScreen());return;}
+  app.innerHTML='';app.appendChild(mainShell());
+  if(S.clockInterval)clearInterval(S.clockInterval);
+  S.clockInterval=setInterval(tickClock,1000);
+}
+
+function loginScreen(){
+  const wrap=document.createElement('div');
+  wrap.style.cssText='display:flex;align-items:center;justify-content:center;min-height:700px;background:var(--color-background-tertiary)';
+  wrap.innerHTML=`
+  <div style="width:360px;display:flex;flex-direction:column;gap:16px">
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="width:48px;height:48px;border-radius:12px;background:var(--ac);display:flex;align-items:center;justify-content:center;margin:0 auto 10px"><i class="ti ti-scan-eye" style="font-size:22px;color:#fff" aria-hidden="true"></i></div>
+      <div style="font-size:18px;font-weight:500">FaceAttend</div>
+      <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Smart Attendance Recognition System</div>
+    </div>
+
+    <div style="background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:20px 22px">
+      <div style="font-size:12px;font-weight:500;margin-bottom:14px">Sign in to your account</div>
+      <div class="fg"><label>Login as</label><select id="roleSelect" onchange="updateLoginRole()"><option value="admin">Admin / Teacher</option><option value="student">Student</option></select></div>
+      <div class="fg"><label id="uidLabel">Admin ID</label><input class="inp-lg" id="uidInput" placeholder="admin@college.edu" value="admin@college.edu"></div>
+      <div class="fg" style="margin-bottom:14px"><label>Password</label><div style="position:relative"><input class="inp-lg" type="password" value="••••••••" style="padding-right:36px"><i class="ti ti-eye" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--color-text-secondary);cursor:pointer" aria-hidden="true"></i></div></div>
+      <button class="btn pri" style="width:100%;padding:9px;font-size:13px" id="loginBtn" onclick="doLogin()"><i class="ti ti-login" style="font-size:14px;margin-right:5px" aria-hidden="true"></i>Sign in</button>
+      <div style="font-size:10px;color:var(--color-text-secondary);margin-top:10px;text-align:center">Demo: select role and click Sign in</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;cursor:pointer" onclick="quickLogin('admin')">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><div style="width:24px;height:24px;border-radius:6px;background:var(--acl);display:flex;align-items:center;justify-content:center"><i class="ti ti-shield" style="font-size:13px;color:var(--ac)" aria-hidden="true"></i></div><span style="font-size:11px;font-weight:500">Admin login</span></div>
+        <div style="font-size:9px;color:var(--color-text-secondary)">Full dashboard access</div>
+      </div>
+      <div style="background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;cursor:pointer" onclick="quickLogin('student')">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px"><div style="width:24px;height:24px;border-radius:6px;background:var(--gl);display:flex;align-items:center;justify-content:center"><i class="ti ti-user-circle" style="font-size:13px;color:var(--gc)" aria-hidden="true"></i></div><span style="font-size:11px;font-weight:500">Student login</span></div>
+        <div style="font-size:9px;color:var(--color-text-secondary)">Priya Sharma · CS2101</div>
+      </div>
+    </div>
+  </div>`;
+  return wrap;
+}
+
+function updateLoginRole(){
+  const r=document.getElementById('roleSelect').value;
+  document.getElementById('uidLabel').textContent=r==='admin'?'Admin ID':'Student ID';
+  document.getElementById('uidInput').placeholder=r==='admin'?'admin@college.edu':'CS2101';
+  document.getElementById('uidInput').value=r==='admin'?'admin@college.edu':'CS2101';
+}
+
+function doLogin(){
+  const r=document.getElementById('roleSelect').value;
+  quickLogin(r);
+}
+
+function quickLogin(role){
+  S.role=role;S.screen='portal';render();
+}
+
+function logout(){
+  S.role=null;S.screen='login';
+  if(S.clockInterval)clearInterval(S.clockInterval);
+  render();
+}
+
+function mainShell(){
+  const shell=document.createElement('div');
+  shell.style.cssText='display:flex;flex-direction:column;min-height:700px';
+
+  const liveSession=S.sessions.find(s=>s.status==='live');
+  const isHoliday=S.holiday.active;
+
+  shell.innerHTML=`
+  <div class="topbar">
+    <div class="logo" style="background:${S.role==='admin'?'var(--ac)':'var(--gc)'}">
+      <i class="ti ti-${S.role==='admin'?'scan-eye':'user-circle'}" aria-hidden="true"></i>
+    </div>
+    <span style="font-size:13px;font-weight:500">FaceAttend — ${S.role==='admin'?'Admin Dashboard':'Student Portal'}</span>
+    ${isHoliday?`<span class="phol"><i class="ti ti-calendar-off" style="font-size:12px" aria-hidden="true"></i>Holiday: ${S.holiday.name}</span>`:''}
+    ${liveSession&&!isHoliday?`<span class="plive"><span class="pulse"></span>Live: ${liveSession.code} ${liveSession.name}</span>`:''}
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span style="font-size:10px;color:var(--color-text-secondary)">Fri 9 May 2026</span>
+      <div class="dav" style="width:26px;height:26px;background:${S.role==='admin'?'var(--acl)':'var(--gl)'};color:${S.role==='admin'?'var(--ac)':'var(--gc)'};border-radius:50%;font-size:10px">${S.role==='admin'?'AD':'PS'}</div>
+      <button class="btn sm" onclick="logout()"><i class="ti ti-logout" aria-hidden="true"></i> Logout</button>
+    </div>
+  </div>
+  <div class="body">
+    <nav class="sb" id="sidebar"></nav>
+    <div class="main" id="mainContent"></div>
+  </div>`;
+
+  setTimeout(()=>{buildSidebar();renderPage();},0);
+  return shell;
+}
+
+function buildSidebar(){
+  const sb=document.getElementById('sidebar');if(!sb)return;
+  const isAdmin=S.role==='admin';
+  const cur=isAdmin?S.adminPage:S.studentPage;
+  const cls=isAdmin?'ona':'ons';
+  const navs=isAdmin?[
+    {sec:'Monitor'},
+    {id:'adash',icon:'ti-layout-dashboard',label:'Dashboard'},
+    {id:'alive',icon:'ti-video',label:'Live feed',badge:'LIVE',bg:'g'},
+    {id:'asess',icon:'ti-clock-play',label:'Sessions'},
+    {sec:'Attendance'},
+    {id:'aatt',icon:'ti-calendar-check',label:'Attendance'},
+    {id:'ahol',icon:'ti-calendar-off',label:'Holidays',badge:S.holidays.length,bg:'a'},
+    {sec:'Management'},
+    {id:'asub',icon:'ti-book',label:'Subjects'},
+    {id:'astu',icon:'ti-users',label:'Students'},
+    {sec:'Analytics'},
+    {id:'arpt',icon:'ti-chart-bar',label:'Reports'},
+    {id:'aalerts',icon:'ti-alert-triangle',label:'Unknown alerts',badge:'2',bg:'r'},
+    {id:'aset',icon:'ti-settings',label:'Settings'},
+  ]:[
+    {sec:'My portal'},
+    {id:'shome',icon:'ti-home',label:'Home'},
+    {id:'satt',icon:'ti-calendar-check',label:'My attendance'},
+    {id:'ssess',icon:'ti-clock-play',label:'Class sessions'},
+    {id:'shol',icon:'ti-calendar-off',label:'Holidays'},
+    {id:'ssub',icon:'ti-book',label:'My subjects'},
+    {sec:'Account'},
+    {id:'snotif',icon:'ti-bell',label:'Notifications'},
+    {id:'sprof',icon:'ti-user',label:'My profile'},
+  ];
+  sb.innerHTML='';
+  navs.forEach(n=>{
+    if(n.sec){const d=document.createElement('div');d.className='ns';d.textContent=n.sec;sb.appendChild(d);return;}
+    const d=document.createElement('div');
+    d.className='ni'+(cur===n.id?' on '+cls:'');
+    d.onclick=()=>navTo(n.id);
+    d.innerHTML=`<i class="ti ${n.icon}" aria-hidden="true"></i>${n.label}${n.badge?`<span class="nbg ${n.bg}">${n.badge}</span>`:''}`;
+    sb.appendChild(d);
+  });
+}
+
+function navTo(id){
+  if(S.role==='admin')S.adminPage=id; else S.studentPage=id;
+  buildSidebar();renderPage();
+  if(id==='alive')setTimeout(startFeeds,80);
+}
+
+function tickClock(){
+  const el=document.getElementById('sessTimer');
+  const pb=document.getElementById('sessProg');
+  if(!el)return;
+  S.sessionSeconds+=1;
+  const tot=90*60,elapsed=S.sessionSeconds;
+  const pct=Math.min(100,Math.round(elapsed/tot*100));
+  const rem=Math.max(0,tot-elapsed);
+  const m=Math.floor(rem/60),s=rem%60;
+  el.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')} left`;
+  if(pb)pb.style.width=pct+'%';
+}
+
+function renderPage(){
+  const mc=document.getElementById('mainContent');if(!mc)return;
+  mc.innerHTML='';
+  const id=S.role==='admin'?S.adminPage:S.studentPage;
+  const fn=pages[id];
+  if(fn){const nodes=fn();(Array.isArray(nodes)?nodes:[nodes]).forEach(n=>mc.appendChild(n));}
+}
+
+function c(tag,css,html){const el=document.createElement(tag);if(css)el.style.cssText=css;if(html)el.innerHTML=html;return el;}
+function card(title,bodyHtml,titleRight){
+  const d=document.createElement('div');d.className='card';
+  if(title!==null){
+    const ch=document.createElement('div');ch.className='ch';
+    ch.innerHTML=`<span class="ct">${title}</span>${titleRight?`<span>${titleRight}</span>`:''}`;
+    d.appendChild(ch);
+  }
+  const cb=document.createElement('div');cb.className='cb';
+  if(bodyHtml)cb.innerHTML=bodyHtml;
+  d.appendChild(cb);
+  return d;
+}
+function row(...items){const d=c('div','display:flex;gap:10px');items.forEach(i=>d.appendChild(i));return d;}
+function col(...items){const d=c('div','flex:1;display:flex;flex-direction:column;gap:10px');items.forEach(i=>d.appendChild(i));return d;}
+function colf(f,...items){const d=c('div',`flex:${f};display:flex;flex-direction:column;gap:10px`);items.forEach(i=>d.appendChild(i));return d;}
+function mg(html){const d=c('div');d.className='mg';d.innerHTML=html;return d;}
+function mc2(label,val,vcls,sub){return `<div class="mc"><div class="ml">${label}</div><div class="mv" style="color:${vcls}">${val}</div><div class="ms">${sub}</div></div>`;}
+function pill(t,cl){return `<span class="pill ${cl}">${t}</span>`;}
+function brow(lbl,pct,col){return `<div class="br"><span class="bl2">${lbl}</span><div class="bt"><div class="bf" style="width:${pct}%;background:${col}">${pct}%</div></div><span class="bp">${pct}</span></div>`;}
+function tli(cl,t,s){return `<div class="tli"><div class="tld ${cl}"></div><div class="tlt">${t}</div><div class="tls">${s}</div></div>`;}
+function alrt(cl,t,s){return `<div class="alrt ${cl}"><i class="ti ti-info-circle" style="font-size:13px;flex-shrink:0" aria-hidden="true"></i><div><div class="at">${t}</div>${s}</div></div>`;}
+
+function sessionBars(){
+  const live=S.sessions.find(s=>s.status==='live');
+  const isHol=S.holiday.active;
+  const nodes=[];
+
+  if(isHol){
+    const b=c('div');
+    b.className='hol-banner';
+    b.innerHTML=`<div class="hol-icon"><i class="ti ti-calendar-off" style="font-size:16px;color:var(--am)" aria-hidden="true"></i></div>
+    <div><div style="font-size:12px;font-weight:500;color:var(--am)">Today is a holiday — ${S.holiday.name}</div>
+    <div style="font-size:10px;color:#633806;margin-top:2px">All class sessions are disabled. CCTV attendance tracking is inactive.</div></div>`;
+    nodes.push(b);
+    return nodes;
+  }
+
+  if(live){
+    const bar=c('div');bar.className='sess-bar';
+    const tot=90,elapsed=Math.floor(S.sessionSeconds/60);
+    const pct=Math.min(100,Math.round(elapsed/tot*100));
+    bar.innerHTML=`<div class="sess-live"></div>
+    <div class="sess-inf">
+      <div class="sess-name">${live.code} ${live.name} — live session</div>
+      <div class="sess-meta">${live.teacher} · ${live.room} · ${live.start}–${live.end} · ${live.present} present · ${live.late} late</div>
+      <div class="sess-prog"><div class="sess-pfil" id="sessProg" style="width:${pct}%"></div></div>
+    </div>
+    <div class="sess-timer" id="sessTimer">-- : --</div>
+    ${S.role==='admin'?`<button class="btn dng sm" onclick="endSession()"><i class="ti ti-player-stop" aria-hidden="true"></i> End</button>`:''}`;
+    nodes.push(bar);
+    setTimeout(tickClock,100);
+  }
+  return nodes;
+}
+
+function endSession(){
+  const live=S.sessions.find(s=>s.status==='live');
+  if(live){live.status='ended';renderPage();}
+}
+
+function addHoliday(){
+  const name=document.getElementById('holName')?.value||'New Holiday';
+  const date=document.getElementById('holDate')?.value||'2026-05-10';
+  S.holidays.push({date,name,type:'Institution'});
+  navTo('ahol');
+}
+
+function toggleHolidayToday(){
+  S.holiday.active=!S.holiday.active;
+  S.holiday.name=S.holiday.active?'Buddha Purnima':'';
+  renderPage();
+  buildSidebar();
+}
+
+const pages={
+
+/* ──────── ADMIN PAGES ──────── */
+adash:()=>{
+  const nodes=[];
+  sessionBars().forEach(b=>nodes.push(b));
+
+  const m=c('div');m.className='mg';
+  m.innerHTML=mc2('Present today','47','var(--ac)','of 62 enrolled')+mc2('Avg attendance','82%','var(--gc)','this month')+mc2('Late arrivals','6','var(--am)','today')+mc2('Unknown alerts','2','var(--rd)','flagged');
+  nodes.push(m);
+
+  const alerts=card('<i class="ti ti-bell" style="font-size:12px;margin-right:4px" aria-hidden="true"></i>Live alerts','',`<span class="plive"><span class="pulse"></span>real-time</span>`);
+  alerts.querySelector('.cb').innerHTML=
+    alrt('p','Priya Sharma — present','CS301 · 94% confidence · 09:03')+
+    alrt('p','Rahul Mehta — present','CS301 · 91% confidence · 09:04')+
+    alrt('u','Unknown person detected','Camera 2 · Room 204 · snapshot saved · 09:07')+
+    alrt('w','Ankit Patel — late','CS301 · arrived 09:18 (threshold 09:10)')+
+    alrt('i','DBMS CS302 session started','10:00 · Prof. S. Gupta · Room 204');
+
+  const tl=card('Today\'s timeline','');
+  tl.querySelector('.cb').innerHTML=`<div class="tl">${tli('s','Session started — CS301','08:55 · Prof. R. Kumar · Room 101')}${tli('p','38 students present','09:03 · face recognition')}${tli('u','Unknown alert','09:07 · Camera 2')}${tli('p','6 late arrivals','09:18 · threshold exceeded')}${tli('s','Session started — CS302 DBMS','10:00 · Prof. S. Gupta')}</div>`;
+
+  const acs=card('Active & upcoming sessions','');
+  acs.querySelector('.cb').innerHTML=S.sessions.map(s=>`
+  <div class="di"><div class="dav" style="background:${s.status==='live'?'var(--gl)':s.status==='ended'?'var(--color-background-secondary)':'var(--acl)'};color:${s.status==='live'?'var(--gc)':s.status==='ended'?'var(--color-text-secondary)':'var(--ac)'}"><i class="ti ti-${s.status==='live'?'player-play':s.status==='ended'?'check':'clock'}" style="font-size:12px" aria-hidden="true"></i></div>
+  <div class="dinf"><div class="dn">${s.code} ${s.name}</div><div class="dr">${s.teacher} · ${s.room} · ${s.start}–${s.end}</div></div>
+  <div style="text-align:right"><div>${pill(s.status==='live'?'Live':s.status==='ended'?'Ended':'Upcoming',s.status==='live'?'pp':s.status==='ended'?'pu':'pi')}</div><div style="font-size:9px;color:var(--gc);margin-top:2px">${s.status!=='upcoming'?s.present+' present':''}</div></div></div>`).join('');
+
+  const bars=card('Subject avg attendance','');
+  bars.querySelector('.cb').innerHTML=`<div class="bw">${brow('CS301',88,'#4F46E5')}${brow('CS302',79,'#0D9488')}${brow('CS303',72,'#D97706')}${brow('CS304',85,'#4F46E5')}${brow('CS305',68,'#E24B4A')}</div>`;
+
+  nodes.push(row(colf(1.5,alerts,tl),colf(1,acs,bars)));
+  return nodes;
+},
+
+asess:()=>{
+  const nodes=[];
+  sessionBars().forEach(b=>nodes.push(b));
+
+  const f=card('Start new session','');
+  f.querySelector('.cb').innerHTML=`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+  <div class="fg"><label>Subject</label><select><option>CS301 — Data Structures</option><option>CS302 — DBMS</option><option>CS303 — OS</option></select></div>
+  <div class="fg"><label>Teacher</label><select><option>Prof. R. Kumar</option><option>Prof. S. Gupta</option><option>Prof. A. Singh</option></select></div>
+  <div class="fg"><label>Room / Camera</label><select><option>Room 101 — Cam 1</option><option>Room 204 — Cam 2</option></select></div>
+  <div class="fg"><label>Late threshold</label><select><option>10 min</option><option>5 min</option><option>15 min</option></select></div>
+  <div class="fg"><label>Start time</label><input type="time" value="11:30"></div>
+  <div class="fg"><label>End time</label><input type="time" value="12:30"></div>
+  </div>
+  <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:4px">
+  <button class="btn sm">Cancel</button>
+  <button class="btn grn sm"><i class="ti ti-player-play" aria-hidden="true"></i> Start session</button>
+  </div>`;
+
+  const tbl=card('All sessions today','');
+  tbl.querySelector('.cb').innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+  <colgroup><col style="width:130px"><col style="width:90px"><col style="width:50px"><col style="width:55px"><col style="width:55px"><col style="width:40px"><col style="width:45px"><col style="width:75px"><col style="width:80px"></colgroup>
+  <thead><tr><th>Subject</th><th>Teacher</th><th>Start</th><th>End</th><th>Present</th><th>Late</th><th>Absent</th><th>Status</th><th>Action</th></tr></thead>
+  <tbody>${S.sessions.map(s=>`<tr>
+  <td style="font-weight:500">${s.code} ${s.name}</td><td>${s.teacher.replace('Prof. ','')}</td>
+  <td>${s.start}</td><td>${s.status==='upcoming'?'—':s.end}</td>
+  <td style="color:var(--gc)">${s.status!=='upcoming'?s.present:'—'}</td>
+  <td style="color:var(--am)">${s.status!=='upcoming'?s.late:'—'}</td>
+  <td style="color:var(--rd)">${s.status!=='upcoming'?s.absent:'—'}</td>
+  <td>${pill(s.status==='live'?'Live':s.status==='ended'?'Ended':'Upcoming',s.status==='live'?'pp':s.status==='ended'?'pu':'pi')}</td>
+  <td>${s.status==='live'?`<button class="btn dng sm" onclick="endSession()">End</button>`:s.status==='upcoming'?`<button class="btn grn sm">Start</button>`:'<button class="btn sm">View</button>'}</td>
+  </tr>`).join('')}</tbody></table></div>`;
+
+  nodes.push(f,tbl);return nodes;
+},
+
+ahol:()=>{
+  const nodes=[];
+  const todayBan=c('div');
+  todayBan.className=S.holiday.active?'hol-banner':'alrt i';
+  todayBan.style.marginBottom='0';
+  if(S.holiday.active){
+    todayBan.innerHTML=`<div class="hol-icon"><i class="ti ti-calendar-off" style="font-size:16px;color:var(--am)" aria-hidden="true"></i></div>
+    <div style="flex:1"><div style="font-size:12px;font-weight:500;color:var(--am)">Today is declared a holiday — ${S.holiday.name}</div>
+    <div style="font-size:10px;color:#633806">All sessions blocked. CCTV inactive. Students notified.</div></div>
+    <button class="btn sm" onclick="toggleHolidayToday()">Mark as working day</button>`;
+  } else {
+    todayBan.innerHTML=`<i class="ti ti-calendar-check" style="font-size:13px;flex-shrink:0" aria-hidden="true"></i>
+    <div style="flex:1"><div class="at">Today — Fri 9 May 2026 — is a working day</div>All sessions active. Click to declare holiday.</div>
+    <button class="btn warn sm" onclick="toggleHolidayToday()"><i class="ti ti-calendar-off" aria-hidden="true"></i> Declare holiday today</button>`;
+  }
+  nodes.push(todayBan);
+
+  const addCard=card('Add holiday','');
+  addCard.querySelector('.cb').innerHTML=`
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+  <div class="fg"><label>Holiday name</label><input id="holName" placeholder="e.g. Diwali, Republic Day"></div>
+  <div class="fg"><label>Date</label><input id="holDate" type="date" value="2026-05-10"></div>
+  <div class="fg"><label>Type</label><select><option>National holiday</option><option>Regional</option><option>Institution holiday</option><option>Exam week</option></select></div>
+  <div class="fg"><label>Applies to</label><select><option>All users</option><option>Students only</option><option>Teachers & staff only</option></select></div>
+  </div>
+  <div style="display:flex;gap:6px;justify-content:flex-end"><button class="btn pri sm" onclick="addHoliday()"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Add holiday</button></div>`;
+
+  const listCard=card(`Holidays (${S.holidays.length})`,`<div>${S.holidays.map(h=>{
+    const d=new Date(h.date);
+    const day=d.getDate();const mon=d.toLocaleString('default',{month:'short'});
+    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:.5px solid var(--color-border-tertiary)">
+    <div style="width:36px;height:36px;border-radius:7px;background:var(--aml);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+    <div style="font-size:14px;font-weight:500;color:var(--am);line-height:1">${day}</div><div style="font-size:8px;color:var(--am)">${mon}</div></div>
+    <div style="flex:1"><div style="font-size:11px;font-weight:500">${h.name}</div><div style="font-size:9px;color:var(--color-text-secondary)">${h.date} · ${h.type}</div></div>
+    ${pill(h.type,'ph')}
+    <button class="btn sm dng" style="margin-left:6px">Remove</button></div>`;
+  }).join('')}</div>`);
+  nodes.push(addCard,listCard);return nodes;
+},
+
+alive:()=>{
+  const nodes=[];
+  sessionBars().forEach(b=>nodes.push(b));
+  const cg=card('<i class="ti ti-video" style="font-size:12px;margin-right:4px" aria-hidden="true"></i>CCTV live — 3 cameras',null,`<span class="plive"><span class="pulse"></span>streaming</span>`);
+  const cgb=cg.querySelector('.cb');cgb.innerHTML='';
+  const grid=c('div','display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:2px');
+  [[1,'Room 101','CS301'],[2,'Room 204','CS302'],[3,'Corridor','monitor']].forEach(([n,room,sub])=>{
+    const fd=c('div',`border-radius:8px;overflow:hidden;border:.5px solid var(--color-border-tertiary);position:relative;aspect-ratio:16/9;background:#0a0d14;cursor:pointer${n===1?';outline:2px solid var(--ac);outline-offset:-2px':''}`);
+    fd.innerHTML=`<canvas id="cv${n}" width="200" height="112" style="width:100%;height:100%"></canvas>
+    <div style="position:absolute;top:5px;left:5px;display:flex;gap:3px"><span class="pill pp" style="font-size:8px"><span class="pulse" style="display:inline-block"></span>LIVE</span><span class="pill pi" style="font-size:8px" id="fc${n}">${n<3?n+1+' faces':'1 unknown'}</span></div>
+    <div style="position:absolute;bottom:0;left:0;right:0;padding:4px 7px;background:linear-gradient(transparent,rgba(0,0,0,.5));font-size:8px;color:#ccc;display:flex;justify-content:space-between"><span>Cam ${n} — ${room}</span><span>${sub}</span></div>`;
+    grid.appendChild(fd);
+  });
+  cgb.appendChild(grid);
+
+  const det=card('Detected faces','');
+  det.querySelector('.cb').innerHTML=`
+  <div class="di"><div class="dav" style="background:var(--acl);color:var(--ac)">PS</div><div class="dinf"><div class="dn">Priya Sharma</div><div class="dr">Student · CS301</div><div class="dbar"><div class="dbf" style="width:94%;background:var(--gc)"></div></div></div><span class="pill pp">94%</span></div>
+  <div class="di"><div class="dav" style="background:var(--gl);color:var(--gc)">RM</div><div class="dinf"><div class="dn">Rahul Mehta</div><div class="dr">Student · CS301</div><div class="dbar"><div class="dbf" style="width:91%;background:var(--gc)"></div></div></div><span class="pill pp">91%</span></div>
+  <div class="di"><div class="dav" style="background:var(--aml);color:var(--am)">AP</div><div class="dinf"><div class="dn">Ankit Patel</div><div class="dr">Student · late</div><div class="dbar"><div class="dbf" style="width:88%;background:var(--am)"></div></div></div><span class="pill pl">late</span></div>
+  <div class="di"><div class="dav" style="background:var(--rdl);color:var(--rd)">?</div><div class="dinf"><div class="dn">Unknown person</div><div class="dr">Unrecognised · flagged</div></div><span class="pill pa">alert</span></div>`;
+
+  nodes.push(cg,row(colf(1.5),colf(1,det)));
+  setTimeout(startFeeds,50);return nodes;
+},
+
+aatt:()=>{
+  const nodes=[];
+  sessionBars().forEach(b=>nodes.push(b));
+  const c2=card('Subject-wise attendance','');
+  c2.querySelector('.cb').innerHTML=`<div class="stabs" style="padding:0 0 10px">${['All subjects','CS301','CS302','CS303','CS304'].map((s,i)=>`<span class="pill ${i===0?'pi':'pu'}" style="cursor:pointer;font-size:10px;padding:3px 10px" onclick="this.parentNode.querySelectorAll('span').forEach(x=>x.className='pill pu');this.className='pill pi'">${s}</span>`).join('')}</div>
+  <div style="overflow-x:auto"><table class="tbl">
+  <colgroup><col style="width:65px"><col style="width:100px"><col style="width:120px"><col style="width:70px"><col style="width:50px"><col style="width:65px"><col style="width:55px"></colgroup>
+  <thead><tr><th>ID</th><th>Name</th><th>Subject</th><th>Date</th><th>Time</th><th>Status</th><th>Conf.</th></tr></thead>
+  <tbody>
+  <tr><td style="color:var(--color-text-secondary)">CS2101</td><td style="font-weight:500">Priya Sharma</td><td>Data Structures</td><td>2026-05-09</td><td>09:03</td><td>${pill('Present','pp')}</td><td>94%</td></tr>
+  <tr><td style="color:var(--color-text-secondary)">CS2102</td><td style="font-weight:500">Rahul Mehta</td><td>Data Structures</td><td>2026-05-09</td><td>09:04</td><td>${pill('Present','pp')}</td><td>91%</td></tr>
+  <tr><td style="color:var(--color-text-secondary)">CS2103</td><td style="font-weight:500">Ankit Patel</td><td>Data Structures</td><td>2026-05-09</td><td>09:18</td><td>${pill('Late','pl')}</td><td>88%</td></tr>
+  <tr><td style="color:var(--color-text-secondary)">CS2104</td><td style="font-weight:500">Neha Singh</td><td>Data Structures</td><td>2026-05-09</td><td>—</td><td>${pill('Absent','pa')}</td><td>—</td></tr>
+  <tr><td style="color:var(--color-text-secondary)">CS2101</td><td style="font-weight:500">Priya Sharma</td><td>DBMS</td><td>2026-05-09</td><td>10:02</td><td>${pill('Present','pp')}</td><td>96%</td></tr>
+  </tbody></table></div>`;
+  nodes.push(c2);return nodes;
+},
+
+asub:()=>{
+  const g=c('div','display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px');
+  [['ti-binary-tree','#EEF2FF','#4F46E5','Data Structures','CS301','Prof. R. Kumar',88],
+   ['ti-database','#FEF9EE','#854F0B','DBMS','CS302','Prof. S. Gupta',79],
+   ['ti-cpu','#EAF3DE','#3B6D11','Operating Systems','CS303','Prof. A. Singh',72],
+   ['ti-network','#E1F5EE','#0F6E56','Comp. Networks','CS304','Prof. D. Verma',85],
+   ['ti-git-branch','#FBEAF0','#993556','Software Engg.','CS305','Prof. P. Sharma',68],
+  ].forEach(([icon,bg,col,name,code,teach,pct])=>{
+    const card2=document.createElement('div');card2.className='card';
+    card2.innerHTML=`<div class="cb"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><div style="width:28px;height:28px;border-radius:6px;background:${bg};display:flex;align-items:center;justify-content:center"><i class="ti ${icon}" style="font-size:13px;color:${col}" aria-hidden="true"></i></div><div><div style="font-size:11px;font-weight:500">${name}</div><div style="font-size:9px;color:var(--color-text-secondary)">${code} · ${teach}</div></div></div>
+    <div class="dbar" style="margin-bottom:4px"><div class="dbf" style="width:${pct}%;background:${pct<75?'#E24B4A':col}"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:9px"><span>Avg attendance</span><span style="font-weight:500;color:${pct<75?'#E24B4A':col}">${pct}%</span></div></div>`;
+    g.appendChild(card2);
+  });
+  return [g];
+},
+
+astu:()=>{
+  const tbl=card('Students','');
+  tbl.querySelector('.cb').innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+  <colgroup><col style="width:65px"><col style="width:110px"><col style="width:45px"><col style="width:80px"><col style="width:80px"><col style="width:80px"></colgroup>
+  <thead><tr><th>ID</th><th>Name</th><th>Sec</th><th>Overall%</th><th>AI face</th><th>Action</th></tr></thead>
+  <tbody>
+  <tr><td style="color:var(--color-text-secondary)">CS2101</td><td style="font-weight:500">Priya Sharma</td><td>A</td><td style="color:var(--gc);font-weight:500">91%</td><td>${pill('Trained','pp')}</td><td><button class="btn sm">Edit</button></td></tr>
+  <tr><td style="color:var(--color-text-secondary)">CS2102</td><td style="font-weight:500">Rahul Mehta</td><td>A</td><td style="color:var(--gc);font-weight:500">87%</td><td>${pill('Trained','pp')}</td><td><button class="btn sm">Edit</button></td></tr>
+  <tr><td style="color:var(--color-text-secondary)">CS2107</td><td style="font-weight:500">Kiran Nair</td><td>B</td><td style="color:var(--rd);font-weight:500">61%</td><td>${pill('Not trained','pa')}</td><td><button class="btn pri sm">Train</button></td></tr>
+  </tbody></table></div>`;
+  return [tbl];
+},
+
+arpt:()=>{
+  const m=c('div');m.className='mg';
+  m.innerHTML=mc2('Sessions','48','var(--ac)','this month')+mc2('Avg','82%','var(--gc)','all subjects')+mc2('Below 75%','8','var(--am)','at risk')+mc2('Alerts','11','var(--rd)','unknown faces');
+  const bars=card('Subject summary','');
+  bars.querySelector('.cb').innerHTML=`<div class="bw">${brow('CS301',88,'#4F46E5')}${brow('CS302',79,'#0D9488')}${brow('CS303',72,'#D97706')}${brow('CS304',85,'#4F46E5')}${brow('CS305',68,'#E24B4A')}</div>`;
+  const exp=card('Export','<div style="display:flex;gap:7px;flex-wrap:wrap"><button class="btn sm"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i> Excel</button><button class="btn sm"><i class="ti ti-file-type-pdf" aria-hidden="true"></i> PDF</button><button class="btn sm"><i class="ti ti-mail" aria-hidden="true"></i> Email digest</button></div>');
+  return [m,row(colf(1,bars),colf(1,exp))];
+},
+
+aalerts:()=>{
+  const c2=card('Unknown face log','');
+  c2.querySelector('.cb').innerHTML=[
+    ['Unknown #1','Camera 2 · Room 204','09:07 · 41% confidence','pa','Unresolved'],
+    ['Unknown #2','Camera 3 · Corridor','10:34 · 38% confidence','pa','Unresolved'],
+    ['Unknown #3','Camera 1 · Room 101','Yesterday · identified as staff','pp','Resolved'],
+  ].map(([n,cam,note,cl,st])=>`<div class="di"><div class="dav" style="background:var(--rdl);color:var(--rd)"><i class="ti ti-user-question" style="font-size:13px" aria-hidden="true"></i></div><div class="dinf"><div class="dn">${n}</div><div class="dr">${cam} · ${note}</div></div>${pill(st,cl)}<button class="btn sm" style="margin-left:6px">View</button></div>`).join('');
+  return [c2];
+},
+
+aset:()=>{
+  const s=card('System settings','');
+  s.querySelector('.cb').innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+  <div class="fg"><label>Face detection model</label><select><option>MTCNN</option><option>Haar Cascade</option></select></div>
+  <div class="fg"><label>Recognition model</label><select><option>FaceNet CNN</option><option>LBPH</option></select></div>
+  <div class="fg"><label>Confidence threshold</label><input type="range" min="60" max="99" value="80" step="1" oninput="this.nextSibling.textContent=Math.round(this.value)+'%'"><span style="font-size:11px">80%</span></div>
+  <div class="fg"><label>Late threshold</label><select><option>10 min</option><option>5 min</option><option>15 min</option></select></div>
+  <div class="fg"><label>Auto absent after session</label><select><option>Yes</option><option>Manual only</option></select></div>
+  <div class="fg"><label>Spoof detection</label><select><option>Enabled</option><option>Disabled</option></select></div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px"><button class="btn sm">Reset</button><button class="btn pri sm">Save</button></div>`;
+  return [s];
+},
+
+/* ──────── STUDENT PAGES ──────── */
+shome:()=>{
+  const nodes=[];
+  sessionBars().forEach(b=>nodes.push(b));
+
+  if(S.holiday.active){
+    const hb=c('div');hb.className='hol-banner';
+    hb.innerHTML=`<div class="hol-icon"><i class="ti ti-beach" style="font-size:16px;color:var(--am)" aria-hidden="true"></i></div>
+    <div><div style="font-size:12px;font-weight:500;color:var(--am)">Today is a holiday — ${S.holiday.name}</div>
+    <div style="font-size:10px;color:#633806">No classes today. Enjoy your break! Attendance is not being tracked.</div></div>`;
+    nodes.push(hb);
+  }
+
+  const prof=c('div','background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px;display:flex;align-items:center;gap:14px');
+  prof.innerHTML=`<div style="width:48px;height:48px;border-radius:50%;background:var(--gl);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500;color:var(--gc)">PS</div>
+  <div style="flex:1"><div style="font-size:14px;font-weight:500">Good morning, Priya Sharma</div><div style="font-size:11px;color:var(--color-text-secondary)">CS2101 · Section A · BCA Semester VI</div></div>
+  <div style="text-align:right"><div style="font-size:22px;font-weight:500;color:var(--gc)">82%</div><div style="font-size:9px;color:var(--color-text-secondary)">overall attendance</div></div>`;
+  nodes.push(prof);
+
+  const m=c('div');m.className='mg';
+  m.innerHTML=mc2('CS301','88%','var(--ac)','Data Structures')+mc2('CS302','91%','var(--gc)','DBMS')+mc2('CS303','72%','var(--am)','OS')+mc2('CS304','85%','var(--gc)','Comp. Networks');
+  nodes.push(m);
+
+  const warn=c('div','background:var(--aml);border:.5px solid #FAC775;border-radius:var(--border-radius-md);padding:10px 13px;display:flex;align-items:center;gap:10px;font-size:10px;color:#412402');
+  warn.innerHTML=`<i class="ti ti-alert-triangle" style="font-size:16px;color:var(--am);flex-shrink:0" aria-hidden="true"></i><div><div style="font-weight:500;font-size:11px">Attendance warning — CS303 OS is at 72%</div>Minimum is 75%. Attend the next 3 classes to recover.</div>`;
+  nodes.push(warn);
+
+  const todayCard=card('Today\'s attendance status','');
+  todayCard.querySelector('.cb').innerHTML=S.sessions.map(s=>`
+  <div class="di"><div class="dav" style="background:${s.status==='live'?'var(--gl)':s.status==='ended'?'var(--acl)':'var(--color-background-secondary)'};color:${s.status==='live'?'var(--gc)':s.status==='ended'?'var(--ac)':'var(--color-text-secondary)'}"><i class="ti ti-${s.status==='live'?'player-play':s.status==='ended'?'check':'clock'}" style="font-size:12px" aria-hidden="true"></i></div>
+  <div class="dinf"><div class="dn">${s.code} ${s.name}</div><div class="dr">${s.teacher} · ${s.start}–${s.end}${s.status==='live'?' · <b style="color:var(--gc)">Live now</b>':''}</div></div>
+  <div style="text-align:right">${s.status==='ended'?pill('Present','pp'):s.status==='live'?pill('In progress','pp'):pill('Upcoming','pi')}</div></div>`).join('');
+
+  nodes.push(todayCard);return nodes;
+},
+
+ssess:()=>{
+  const nodes=[];
+  sessionBars().forEach(b=>nodes.push(b));
+
+  if(S.holiday.active){
+    const hb=c('div');hb.className='hol-banner';
+    hb.innerHTML=`<div class="hol-icon"><i class="ti ti-calendar-off" style="font-size:16px;color:var(--am)" aria-hidden="true"></i></div>
+    <div><div style="font-size:12px;font-weight:500;color:var(--am)">Holiday — ${S.holiday.name}</div><div style="font-size:10px;color:#633806">No sessions scheduled today.</div></div>`;
+    nodes.push(hb);return nodes;
+  }
+
+  const tbl=card('Today\'s class sessions','');
+  tbl.querySelector('.cb').innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+  <colgroup><col style="width:130px"><col style="width:90px"><col style="width:50px"><col style="width:55px"><col style="width:65px"><col style="width:75px"></colgroup>
+  <thead><tr><th>Subject</th><th>Teacher</th><th>Start</th><th>End</th><th>Room</th><th>My status</th></tr></thead>
+  <tbody>${S.sessions.map(s=>`<tr>
+  <td style="font-weight:500">${s.code} ${s.name}</td><td>${s.teacher.replace('Prof. ','')}</td>
+  <td>${s.start}</td><td>${s.end}</td><td>${s.room}</td>
+  <td>${s.status==='ended'?pill('Present','pp'):s.status==='live'?pill('In session','pp'):pill('Upcoming','pi')}</td>
+  </tr>`).join('')}</tbody></table></div>
+  <div style="padding:8px 0 0;font-size:9px;color:var(--color-text-secondary)">Sessions update in real-time via WebSocket. Late threshold is 10 min after start.</div>`;
+
+  nodes.push(tbl);return nodes;
+},
+
+shol:()=>{
+  const nodes=[];
+  const todayBan=c('div');
+  if(S.holiday.active){
+    todayBan.className='hol-banner';
+    todayBan.innerHTML=`<div class="hol-icon"><i class="ti ti-beach" style="font-size:16px;color:var(--am)" aria-hidden="true"></i></div>
+    <div><div style="font-size:12px;font-weight:500;color:var(--am)">Today is a holiday — ${S.holiday.name}!</div><div style="font-size:10px;color:#633806">No classes. Attendance not tracked. Enjoy your day.</div></div>`;
+  } else {
+    todayBan.className='alrt p';todayBan.style.marginBottom='0';
+    todayBan.innerHTML=`<i class="ti ti-calendar-check" style="font-size:13px;flex-shrink:0" aria-hidden="true"></i><div><div class="at">Today is a working day — Fri 9 May 2026</div>All classes are running. Attendance is being tracked.</div>`;
+  }
+  nodes.push(todayBan);
+
+  const listCard=card(`Upcoming holidays (${S.holidays.length})`,`<div>${S.holidays.map(h=>{
+    const d=new Date(h.date);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:.5px solid var(--color-border-tertiary)">
+    <div style="width:36px;height:36px;border-radius:7px;background:var(--aml);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+    <div style="font-size:13px;font-weight:500;color:var(--am);line-height:1">${d.getDate()}</div><div style="font-size:8px;color:var(--am)">${d.toLocaleString('default',{month:'short'})}</div></div>
+    <div><div style="font-size:11px;font-weight:500">${h.name}</div><div style="font-size:9px;color:var(--color-text-secondary)">${h.date} · ${h.type}</div></div>
+    ${pill(h.type,'ph')}</div>`;
+  }).join('')}</div>`);
+  nodes.push(listCard);return nodes;
+},
+
+satt:()=>{
+  const bars=card('My attendance by subject','');
+  bars.querySelector('.cb').innerHTML=`<div class="bw">${brow('CS301 Data Structures',88,'#4F46E5')}${brow('CS302 DBMS',91,'#0D9488')}${brow('CS303 OS',72,'#D97706')}${brow('CS304 Comp. Networks',85,'#4F46E5')}${brow('CS305 Software Engg.',78,'#0D9488')}</div>
+  <div style="font-size:9px;color:var(--color-text-secondary);margin-top:8px;padding-top:6px;border-top:.5px solid var(--color-border-tertiary)">Minimum required: 75% · Subjects below threshold shown in red</div>`;
+
+  const hist=card('Attendance history','');
+  hist.querySelector('.cb').innerHTML=`<div style="overflow-x:auto"><table class="tbl">
+  <colgroup><col style="width:120px"><col style="width:80px"><col style="width:55px"><col style="width:65px"><col style="width:55px"></colgroup>
+  <thead><tr><th>Subject</th><th>Date</th><th>Time</th><th>Status</th><th>Conf.</th></tr></thead>
+  <tbody>
+  <tr><td style="font-weight:500">Data Structures</td><td>2026-05-09</td><td>09:03</td><td>${pill('Present','pp')}</td><td>94%</td></tr>
+  <tr><td style="font-weight:500">DBMS</td><td>2026-05-09</td><td>10:02</td><td>${pill('Present','pp')}</td><td>96%</td></tr>
+  <tr><td style="font-weight:500">OS</td><td>2026-05-08</td><td>—</td><td>${pill('Absent','pa')}</td><td>—</td></tr>
+  <tr><td style="font-weight:500">Data Structures</td><td>2026-05-08</td><td>09:18</td><td>${pill('Late','pl')}</td><td>88%</td></tr>
+  <tr><td style="font-weight:500">Comp. Networks</td><td>2026-05-08</td><td>13:02</td><td>${pill('Present','pp')}</td><td>92%</td></tr>
+  </tbody></table></div>`;
+  return [bars,hist];
+},
+
+ssub:()=>{
+  const g=c('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px');
+  [['ti-binary-tree','#EEF2FF','#4F46E5','Data Structures','CS301','Prof. R. Kumar',88,'Tue Thu','09:00–10:00'],
+   ['ti-database','#E1F5EE','#0F6E56','DBMS','CS302','Prof. S. Gupta',91,'Mon Wed Fri','10:00–11:00'],
+   ['ti-cpu','#FAEEDA','#854F0B','Operating Systems','CS303','Prof. A. Singh',72,'Mon Wed','11:00–12:00'],
+   ['ti-network','#E1F5EE','#0F6E56','Comp. Networks','CS304','Prof. D. Verma',85,'Tue Thu','13:00–14:00'],
+  ].forEach(([icon,bg,col,name,code,teach,pct,days,time])=>{
+    const card2=document.createElement('div');card2.className='card';
+    card2.innerHTML=`<div class="cb"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><div style="width:28px;height:28px;border-radius:6px;background:${bg};display:flex;align-items:center;justify-content:center"><i class="ti ${icon}" style="font-size:13px;color:${col}" aria-hidden="true"></i></div><div><div style="font-size:11px;font-weight:500">${name}</div><div style="font-size:9px;color:var(--color-text-secondary)">${code} · ${teach}</div></div></div>
+    <div style="font-size:9px;color:var(--color-text-secondary);margin-bottom:4px">${days} · ${time}</div>
+    <div class="dbar" style="margin-bottom:4px"><div class="dbf" style="width:${pct}%;background:${pct<75?'#E24B4A':col}"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:9px"><span>My attendance</span><span style="font-weight:500;color:${pct<75?'#E24B4A':col}">${pct}% ${pct<75?'⚠ Below 75%':''}</span></div></div>`;
+    g.appendChild(card2);
+  });
+  return [g];
+},
+
+snotif:()=>{
+  const c2=card('Notifications','');
+  c2.querySelector('.cb').innerHTML=[
+    ['p','ti-check','Present — CS301 Data Structures','Today 09:03 · 94% face recognition'],
+    ['p','ti-check','Present — CS302 DBMS','Today 10:02 · 96% confidence'],
+    ['w','ti-alert-triangle','Attendance warning — CS303 OS','Your attendance is 72%, below 75%'],
+    ['i','ti-player-play','Session started — CS303 OS','Today 11:30 AM · Room 301 · Prof. A. Singh'],
+    ['u','ti-x','Absent — CS303 OS on 08 May','You were not detected in class'],
+    S.holiday.active?['h','ti-calendar-off',`Holiday today — ${S.holiday.name}`,'All sessions cancelled. No attendance tracked.']:null,
+  ].filter(Boolean).map(([cl,ic,t,s])=>`<div class="alrt ${cl}"><i class="ti ${ic}" style="font-size:13px;flex-shrink:0" aria-hidden="true"></i><div><div class="at">${t}</div>${s}</div></div>`).join('');
+  return [c2];
+},
+
+sprof:()=>{
+  const prof=card('My profile','');
+  prof.querySelector('.cb').innerHTML=`<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+  <div style="width:52px;height:52px;border-radius:50%;background:var(--gl);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:500;color:var(--gc)">PS</div>
+  <div><div style="font-size:14px;font-weight:500">Priya Sharma</div><div style="font-size:11px;color:var(--color-text-secondary)">CS2101 · Section A · BCA Semester VI</div></div>
+  <div style="margin-left:auto;text-align:right"><div style="font-size:20px;font-weight:500;color:var(--gc)">82%</div><div style="font-size:9px;color:var(--color-text-secondary)">overall attendance</div></div></div>
+  <div style="border-top:.5px solid var(--color-border-tertiary);padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px">
+  <div><span style="color:var(--color-text-secondary)">Email</span><br>priya.sharma@college.edu</div>
+  <div><span style="color:var(--color-text-secondary)">Roll no.</span><br>42</div>
+  <div><span style="color:var(--color-text-secondary)">Face AI status</span><br><span style="color:var(--gc);font-weight:500">Trained</span></div>
+  <div><span style="color:var(--color-text-secondary)">Enrolled subjects</span><br>5 subjects</div>
+  </div>`;
+  return [prof];
+},
+
+};
+
+let feedsOn=false;
+function startFeeds(){
+  if(feedsOn)return;feedsOn=true;
+  const names=[['Priya','#3B6D11'],['Rahul','#3B6D11'],['Ankit','#854F0B'],['?','#E24B4A']];
+  [1,2,3].forEach(n=>{
+    const cv=document.getElementById('cv'+n);if(!cv)return;
+    const ctx=cv.getContext('2d');const W=cv.width,H=cv.height;
+    const count=n===3?1:n+1;
+    const faces=[];
+    for(let i=0;i<count;i++){
+      const nm=names[i]||['?','#E24B4A'];
+      faces.push({x:10+i*(W/(count+.5))+Math.random()*8,y:5+Math.random()*8,vx:(Math.random()-.5)*.18,vy:(Math.random()-.5)*.14,w:32,h:38,col:nm[1],lbl:nm[0]});
+    }
+    (function frame(){
+      ctx.fillStyle='#0a0d14';ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='#141820';ctx.lineWidth=.4;
+      for(let x=0;x<W;x+=14){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+      for(let y=0;y<H;y+=14){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      for(const f of faces){
+        f.x+=f.vx;f.y+=f.vy;
+        if(f.x<3||f.x>W-f.w-3)f.vx*=-1;
+        if(f.y<3||f.y>H-f.h-12)f.vy*=-1;
+        ctx.strokeStyle=f.col;ctx.lineWidth=1.2;ctx.beginPath();ctx.roundRect(f.x,f.y,f.w,f.h,3);ctx.stroke();
+        const tw=ctx.measureText(f.lbl).width+6;
+        ctx.fillStyle=f.col;ctx.fillRect(f.x,f.y-11,tw,10);
+        ctx.fillStyle='#fff';ctx.font='7px sans-serif';ctx.fillText(f.lbl,f.x+3,f.y-3);
+      }
+      requestAnimationFrame(frame);
+    })();
+  });
+}
+
+render();
+</script>
