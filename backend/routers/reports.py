@@ -1,9 +1,9 @@
-# routers/reports.py — Analytics and reports
 
 from datetime import date, timedelta
 from typing import List, Optional
 import csv, io
 from fastapi import APIRouter, Depends, Query, Response
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -14,30 +14,63 @@ router = APIRouter()
 
 
 @router.get("/dashboard", response_model=schemas.DashboardStats)
-def dashboard(db: Session = Depends(get_db), _=Depends(require_role("admin","teacher"))):
+def dashboard(
+    teacher_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     today = date.today()
-    total_students  = db.query(models.User).filter(models.User.role == "student", models.User.is_active == True).count()
-    total_teachers  = db.query(models.User).filter(models.User.role == "teacher", models.User.is_active == True).count()
-    total_subjects  = db.query(models.Subject).count()
-    live_sessions   = db.query(models.Session).filter(models.Session.status == "Live").count()
-    open_alerts     = db.query(models.Alert).filter(models.Alert.status == "Open").count()
+    if current_user.role == "teacher":
+        teacher_id = current_user.id
 
-    today_recs      = db.query(models.AttendanceRecord).filter(models.AttendanceRecord.date == today).all()
-    today_present   = sum(1 for r in today_recs if r.status == "Present")
-    today_late      = sum(1 for r in today_recs if r.status == "Late")
-    today_absent    = sum(1 for r in today_recs if r.status == "Absent")
-    today_total     = len(today_recs)
-    today_pct       = round(((today_present + today_late) / today_total) * 100, 1) if today_total else 0.0
+    if teacher_id:
+        total_students = db.query(models.AttendanceRecord).join(models.Session).filter(
+            models.Session.teacher_id == teacher_id,
+        ).distinct(models.AttendanceRecord.student_id).count()
+        total_subjects = db.query(models.Subject).filter(models.Subject.teacher_id == teacher_id).count()
+        live_sessions = db.query(models.Session).filter(
+            models.Session.teacher_id == teacher_id,
+            models.Session.status == "Live",
+        ).count()
+        open_alerts = db.query(models.Alert).join(models.Session).filter(
+            models.Alert.status == "Open",
+            models.Session.teacher_id == teacher_id,
+        ).count()
+        today_recs = db.query(models.AttendanceRecord).join(models.Session).filter(
+            models.AttendanceRecord.date == today,
+            models.Session.teacher_id == teacher_id,
+        ).all()
+        week_recs = db.query(models.AttendanceRecord).join(models.Session).filter(
+            models.AttendanceRecord.date >= today - timedelta(days=7),
+            models.Session.teacher_id == teacher_id,
+        ).all()
+    else:
+        total_students = db.query(models.User).filter(models.User.role == "student", or_(models.User.is_active == True, models.User.is_active.is_(None))).count()
+        total_subjects = db.query(models.Subject).count()
+        live_sessions = db.query(models.Session).filter(models.Session.status == "Live").count()
+        open_alerts = db.query(models.Alert).filter(models.Alert.status == "Open").count()
+        today_recs = db.query(models.AttendanceRecord).filter(models.AttendanceRecord.date == today).all()
+        week_recs = db.query(models.AttendanceRecord).filter(models.AttendanceRecord.date >= today - timedelta(days=7)).all()
 
-    week_recs       = db.query(models.AttendanceRecord).filter(models.AttendanceRecord.date >= today - timedelta(days=7)).all()
-    week_present    = sum(1 for r in week_recs if r.status in ("Present","Late"))
-    avg_7d          = round((week_present / len(week_recs)) * 100, 1) if week_recs else 0.0
+    today_present = sum(1 for r in today_recs if r.status == "Present")
+    today_late = sum(1 for r in today_recs if r.status == "Late")
+    today_absent = sum(1 for r in today_recs if r.status == "Absent")
+    today_total = len(today_recs)
+    today_pct = round(((today_present + today_late) / today_total) * 100, 1) if today_total else 0.0
+    week_present = sum(1 for r in week_recs if r.status in ("Present","Late"))
+    avg_7d = round((week_present / len(week_recs)) * 100, 1) if week_recs else 0.0
 
     return schemas.DashboardStats(
-        total_students=total_students, total_teachers=total_teachers,
-        total_subjects=total_subjects, live_sessions=live_sessions,
-        today_present=today_present, today_late=today_late, today_absent=today_absent,
-        today_attendance_pct=today_pct, open_alerts=open_alerts, avg_attendance_7d=avg_7d,
+        total_students=total_students,
+        total_teachers=db.query(models.User).filter(models.User.role == "teacher", or_(models.User.is_active == True, models.User.is_active.is_(None))).count(),
+        total_subjects=total_subjects,
+        live_sessions=live_sessions,
+        today_present=today_present,
+        today_late=today_late,
+        today_absent=today_absent,
+        today_attendance_pct=today_pct,
+        open_alerts=open_alerts,
+        avg_attendance_7d=avg_7d,
     )
 
 
@@ -45,6 +78,7 @@ def dashboard(db: Session = Depends(get_db), _=Depends(require_role("admin","tea
 def attendance_summary(
     subject_id: Optional[str] = Query(None),
     student_id: Optional[str] = Query(None),
+    teacher_id: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     db: Session = Depends(get_db),
@@ -53,11 +87,18 @@ def attendance_summary(
     q = db.query(models.AttendanceRecord)
     if current_user.role == "student":
         q = q.filter(models.AttendanceRecord.student_id == current_user.id)
-    elif student_id:
+    elif current_user.role == "teacher":
+        q = q.join(models.Session).filter(models.Session.teacher_id == current_user.id)
+    elif teacher_id:
+        q = q.join(models.Session).filter(models.Session.teacher_id == teacher_id)
+    if student_id:
         q = q.filter(models.AttendanceRecord.student_id == student_id)
-    if subject_id: q = q.filter(models.AttendanceRecord.subject_id == subject_id)
-    if date_from:  q = q.filter(models.AttendanceRecord.date >= date_from)
-    if date_to:    q = q.filter(models.AttendanceRecord.date <= date_to)
+    if subject_id:
+        q = q.filter(models.AttendanceRecord.subject_id == subject_id)
+    if date_from:
+        q = q.filter(models.AttendanceRecord.date >= date_from)
+    if date_to:
+        q = q.filter(models.AttendanceRecord.date <= date_to)
     records = q.all()
     total   = len(records)
     present = sum(1 for r in records if r.status == "Present")
@@ -81,13 +122,22 @@ def at_risk(threshold: float = Query(75.0), db: Session = Depends(get_db), _=Dep
 
 
 @router.get("/subject-attendance", response_model=List[schemas.SubjectAttendanceStat])
-def subject_attendance(db: Session = Depends(get_db), _=Depends(require_role("admin","teacher"))):
+def subject_attendance(
+    teacher_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     result = []
-    for subj in db.query(models.Subject).all():
+    query = db.query(models.Subject)
+    if current_user.role == "teacher":
+        query = query.filter(models.Subject.teacher_id == current_user.id)
+    elif teacher_id:
+        query = query.filter(models.Subject.teacher_id == teacher_id)
+    for subj in query.all():
         records = db.query(models.AttendanceRecord).filter(models.AttendanceRecord.subject_id == subj.id).all()
-        total   = len(records)
+        total = len(records)
         present = sum(1 for r in records if r.status in ("Present","Late"))
-        pct     = round((present / total) * 100, 1) if total else 0.0
+        pct = round((present / total) * 100, 1) if total else 0.0
         sessions_count = db.query(models.Session).filter(models.Session.subject_id == subj.id).count()
         result.append(schemas.SubjectAttendanceStat(
             subject_id=subj.id, name=subj.name, code=subj.code,
@@ -147,16 +197,25 @@ def student_rankings(limit: int = Query(20), db: Session = Depends(get_db), _=De
 def export_csv(
     subject_id: Optional[str] = Query(None),
     student_id: Optional[str] = Query(None),
+    teacher_id: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_role("admin","teacher")),
+    current_user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.AttendanceRecord)
-    if student_id: q = q.filter(models.AttendanceRecord.student_id == student_id)
-    if subject_id: q = q.filter(models.AttendanceRecord.subject_id == subject_id)
-    if date_from:  q = q.filter(models.AttendanceRecord.date >= date_from)
-    if date_to:    q = q.filter(models.AttendanceRecord.date <= date_to)
+    if current_user.role == "teacher":
+        q = q.join(models.Session).filter(models.Session.teacher_id == current_user.id)
+    elif teacher_id:
+        q = q.join(models.Session).filter(models.Session.teacher_id == teacher_id)
+    if student_id:
+        q = q.filter(models.AttendanceRecord.student_id == student_id)
+    if subject_id:
+        q = q.filter(models.AttendanceRecord.subject_id == subject_id)
+    if date_from:
+        q = q.filter(models.AttendanceRecord.date >= date_from)
+    if date_to:
+        q = q.filter(models.AttendanceRecord.date <= date_to)
     records = q.order_by(models.AttendanceRecord.date.desc()).all()
     buf = io.StringIO()
     writer = csv.writer(buf)

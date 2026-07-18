@@ -22,6 +22,7 @@ def list_attendance(
     student_id: Optional[str] = Query(None),
     subject_id: Optional[str] = Query(None),
     session_id: Optional[str] = Query(None),
+    teacher_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     date_from: Optional[date] = Query(None),
     date_to: Optional[date] = Query(None),
@@ -34,11 +35,18 @@ def list_attendance(
         q = q.filter(models.AttendanceRecord.student_id == current_user.id)
     elif student_id:
         q = q.filter(models.AttendanceRecord.student_id == student_id)
-    if subject_id: q = q.filter(models.AttendanceRecord.subject_id == subject_id)
-    if session_id: q = q.filter(models.AttendanceRecord.session_id == session_id)
-    if status:     q = q.filter(models.AttendanceRecord.status == status)
-    if date_from:  q = q.filter(models.AttendanceRecord.date >= date_from)
-    if date_to:    q = q.filter(models.AttendanceRecord.date <= date_to)
+    if teacher_id:
+        q = q.join(models.Session).filter(models.Session.teacher_id == teacher_id)
+    if subject_id:
+        q = q.filter(models.AttendanceRecord.subject_id == subject_id)
+    if session_id:
+        q = q.filter(models.AttendanceRecord.session_id == session_id)
+    if status:
+        q = q.filter(models.AttendanceRecord.status == status)
+    if date_from:
+        q = q.filter(models.AttendanceRecord.date >= date_from)
+    if date_to:
+        q = q.filter(models.AttendanceRecord.date <= date_to)
     return [enrich_attendance(r) for r in q.order_by(models.AttendanceRecord.date.desc()).all()]
 
 

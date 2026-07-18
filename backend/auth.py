@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -50,7 +51,7 @@ def get_current_user(
 
     user = db.query(models.User).filter(
         models.User.id == user_id,
-        models.User.is_active == True,
+        or_(models.User.is_active == True, models.User.is_active.is_(None)),
     ).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found or inactive")

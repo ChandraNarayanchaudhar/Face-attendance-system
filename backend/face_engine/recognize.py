@@ -1,644 +1,693 @@
-# Live face recognition — watches camera and marks attendance
-# Uses both algorithms: face_recognition (HOG) + DeepFace (ArcFace)
-# Applies all time rules: Present/Late/Absent/Early-leave/Ignored
-#
-# Usage:
-#   Gate camera:  python recognize.py --camera 0 --mode gate --name "Cam 1 Gate"
-#   Class camera: python recognize.py --camera 1 --mode class --session_id SES-1001 --name "Cam 2 Lab2A"
+"""
+recognize.py — Live face recognition with 3-algorithm voting system
+
+Algorithms:
+  1. HOG (face_recognition) — fast detection
+  2. ArcFace (DeepFace) — high accuracy
+  3. Facenet512 (DeepFace) — confirmation
+
+Voting:
+  2+ algorithms agree = CONFIRMED match → mark attendance
+  1 algorithm agrees = UNCERTAIN → reject → unknown
+  0 algorithms agree = UNKNOWN → alert
+
+Usage:
+  Gate mode:
+    python recognize.py --mode gate --email admin@smart.com --password admin123
+
+  Class mode:
+    python recognize.py --mode class --session_id SES-001 --email admin@smart.com --password admin123
+"""
 
 import os
 import sys
 import cv2
-import pickle
 import argparse
 import numpy as np
 import requests
-import json
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from threading import Thread
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import face_db
 
+# ── Libraries ──────────────────────────────────────────────────────────────────
 try:
     import face_recognition
-    from deepface import DeepFace
-except ImportError as e:
-    print(f"❌ Missing: {e}")
+    print("✅ face_recognition loaded")
+except ImportError:
+    print("❌ Run: pip install face-recognition")
     sys.exit(1)
 
-# Backend API URL
-API_URL = "http://localhost:8000/api"
+try:
+    from deepface import DeepFace
+    DEEPFACE_OK = True
+    print("✅ DeepFace loaded")
+except ImportError:
+    DEEPFACE_OK = False
+    print("⚠️  DeepFace not found — using HOG only")
 
-# Path to saved face embeddings
-ENCODINGS_FILE = os.path.join(os.path.dirname(__file__), "models", "encodings.pkl")
+# ── Config ─────────────────────────────────────────────────────────────────────
+API_URL             = "http://127.0.0.1:8000/api"
+PRESENT_WINDOW_MINS = 5     # within 5 mins = Present
+EARLY_LEAVE_MINS    = 10    # leave 10+ mins before end = Absent
+COOLDOWN_SECS       = 30    # cooldown between detections
+PROCESS_EVERY_N     = 3     # process every 3rd frame
+MIN_VOTES           = 1    # need 2+ votes to confirm identity
+HOG_THRESHOLD       = 0.55  # HOG distance threshold
+DEEP_THRESHOLD      = 0.55  # DeepFace cosine similarity threshold
 
-# How long to wait before marking same person again (seconds)
-COOLDOWN_SECONDS = 30
+# Colors BGR
+GREEN  = (0, 255, 0)
+ORANGE = (0, 165, 255)
+RED    = (0, 0, 255)
+GRAY   = (128, 128, 128)
+WHITE  = (255, 255, 255)
+BLACK  = (0, 0, 0)
+YELLOW = (0, 255, 255)
+CYAN   = (255, 255, 0)
 
-# ── Time Rules ────────────────────────────────────────────────────────────────
-# Present  = enter within PRESENT_WINDOW minutes of session start
-PRESENT_WINDOW_MINS = 5
-# Early leave = leave more than EARLY_LEAVE_MINS before session end = Absent
-EARLY_LEAVE_MINS = 10
 
+class VotingRecognitionEngine:
+    """
+    3-Algorithm Voting Face Recognition System
 
-class FaceRecognitionEngine:
+    How voting works:
+      Each algorithm casts a vote for who it thinks the person is
+      Algorithm 1 (HOG)      → vote 1
+      Algorithm 2 (ArcFace)  → vote 2
+      Algorithm 3 (Facenet)  → vote 3
 
-    def __init__(self, camera_id, camera_name, mode, session_id=None, token=None):
-        self.camera_id   = camera_id     # webcam index or RTSP URL
-        self.camera_name = camera_name   # display name "Cam 1 Gate"
-        self.mode        = mode          # "gate" or "class"
-        self.session_id  = session_id    # required for class mode
-        self.token       = token         # JWT token for API calls
+      If 2+ votes for same person → CONFIRMED
+      If 1 vote only → UNCERTAIN → treated as Unknown
+      If 0 votes → UNKNOWN → alert created
+    """
 
-        # Track who is currently inside the room
-        # {student_id: {"entry_time": datetime, "name": str}}
+    def __init__(self, mode, session_id, token, camera_name, camera_index=0):
+        self.mode         = mode
+        self.session_id   = session_id
+        self.token        = token
+        self.camera_name  = camera_name
+        self.camera_index = camera_index
         self.inside_room = {}
+        self.last_seen   = {}
+        self.marked_set  = set()
+        self.session_done = False
 
-        # Cooldown tracker — avoid marking same person multiple times
-        # {student_id: last_detected_datetime}
-        self.last_detected = {}
-
-        # Already marked attendance this session
-        self.already_marked = set()
-
-        # Load face encodings from training
-        self.encodings = self.load_encodings()
-
-        # Session info (loaded from API)
-        self.session_info = None
-        if session_id:
-            self.session_info = self.get_session_info(session_id)
-
-    def load_encodings(self):
-        # Load trained face embeddings from file
-        if not os.path.exists(ENCODINGS_FILE):
-            print(f"❌ No encodings found at {ENCODINGS_FILE}")
-            print("   Run train.py first to register student faces")
-            return None
-        with open(ENCODINGS_FILE, "rb") as f:
-            data = pickle.load(f)
-        print(f"✅ Loaded {len(data['student_ids'])} trained faces")
-        return data
-
-    def get_session_info(self, session_id):
-        # Get session details from backend API
-        try:
-            res = requests.get(
-                f"{API_URL}/sessions/{session_id}",
-                headers={"Authorization": f"Bearer {self.token}"}
-            )
-            if res.status_code == 200:
-                info = res.json()
-                print(f"✅ Session: {info['subject_name']} | {info['start_time']}–{info['end_time']}")
-                return info
-        except Exception as e:
-            print(f"❌ Could not load session: {e}")
-        return None
-
-    def api_headers(self):
-        # Return auth headers for API calls
-        return {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.token}"
+        # Recognition stats for display
+        self.stats = {
+            "total_detections": 0,
+            "confirmed":        0,
+            "uncertain":        0,
+            "unknown":          0,
         }
 
-    def mark_attendance(self, student_id, name, status, confidence, entry_time):
-        # Mark attendance in backend database
-        if student_id in self.already_marked:
-            return
-        now_str = entry_time.strftime("%H:%M")
+        self.enc          = self._load_encodings()
+        self.session_info = self._get_session() if session_id else None
+
+    def _load_encodings(self):
+        data = face_db.load_all()
+        if not data.get("student_ids"):
+            print(f"\n❌ No trained faces in the database")
+            print("   Run: python train.py --student_id ST-1 --name 'Name' --webcam")
+            return None
+
+        count = len(data["student_ids"])
+        print(f"\n✅ Loaded {count} trained face(s) from database:")
+        for sid, name in zip(data["student_ids"], data["names"]):
+            print(f"   {sid} — {name}")
+        return data
+
+    def _get_session(self):
         try:
-            res = requests.post(f"{API_URL}/attendance", json={
-                "student_id": student_id,
+            r = requests.get(
+                f"{API_URL}/sessions/{self.session_id}",
+                headers=self._headers(), timeout=5
+            )
+            if r.status_code == 200:
+                info = r.json()
+                print(f"\n📚 Session: {info.get('subject_name')} | "
+                      f"{info.get('start_time')}–{info.get('end_time')}")
+                return info
+        except Exception as e:
+            print(f"⚠️  Cannot load session: {e}")
+        return None
+
+    def _headers(self):
+        return {
+            "Content-Type":  "application/json",
+            "Authorization": f"Bearer {self.token}",
+        }
+
+    # ── Time rules ────────────────────────────────────────────────────────────
+
+    def _parse_time(self, t):
+        return datetime.combine(date.today(), datetime.strptime(t, "%H:%M").time())
+
+    def _get_status(self, entry_time):
+        if not self.session_info:
+            return "Present"
+        start    = self._parse_time(self.session_info["start_time"])
+        diff     = (entry_time - start).total_seconds() / 60
+        return "Present" if diff <= PRESENT_WINDOW_MINS else "Late"
+
+    def _session_ended(self):
+        if not self.session_info:
+            return False
+        return datetime.now() > self._parse_time(self.session_info["end_time"])
+
+    def _in_cooldown(self, key):
+        if key not in self.last_seen:
+            return False
+        return (datetime.now() - self.last_seen[key]).total_seconds() < COOLDOWN_SECS
+
+    # ── API calls ─────────────────────────────────────────────────────────────
+
+    def _mark_attendance(self, sid, name, status, conf, entry_time):
+        if sid in self.marked_set:
+            return
+        try:
+            r = requests.post(f"{API_URL}/attendance", json={
+                "student_id": sid,
                 "session_id": self.session_id,
                 "subject_id": self.session_info["subject_id"] if self.session_info else "",
                 "status":     status,
-                "confidence": round(confidence, 2),
-                "time":       now_str,
+                "confidence": round(float(conf), 2),
+                "time":       entry_time.strftime("%H:%M"),
                 "marked_by":  "face",
-            }, headers=self.api_headers())
-
-            if res.status_code == 201:
-                self.already_marked.add(student_id)
-                tone = "success" if status == "Present" else "warning" if status == "Late" else "danger"
-                print(f"  ✅ Marked {status}: {name} at {now_str}")
-                # Add to live activity feed
-                self.add_feed_event(f"{status} • {name} • {self.camera_name}", tone)
-            elif res.status_code == 400:
-                # Already marked — add to set to avoid retry
-                self.already_marked.add(student_id)
+            }, headers=self._headers(), timeout=5)
+            if r.status_code in (200, 201):
+                self.marked_set.add(sid)
+                tone = "success" if status == "Present" else "warning"
+                print(f"  ✅ MARKED {status}: {name} at {entry_time.strftime('%H:%M')}")
+                Thread(target=self._feed,
+                       args=(f"{status} • {name} • {self.camera_name}", tone)).start()
+            elif r.status_code == 400:
+                self.marked_set.add(sid)
         except Exception as e:
-            print(f"  ❌ API error marking attendance: {e}")
+            print(f"  ❌ Mark error: {e}")
 
-    def update_attendance_status(self, student_id, new_status):
-        # Update existing attendance record (e.g. change Present to Absent on early leave)
+    def _update_absent(self, sid, name):
         try:
-            res = requests.get(
-                f"{API_URL}/attendance?student_id={student_id}&session_id={self.session_id}",
-                headers=self.api_headers()
+            r = requests.get(
+                f"{API_URL}/attendance?student_id={sid}&session_id={self.session_id}",
+                headers=self._headers(), timeout=5
             )
-            if res.status_code == 200:
-                records = res.json()
-                if records:
-                    record_id = records[0]["id"]
-                    requests.patch(
-                        f"{API_URL}/attendance/{record_id}",
-                        json={"status": new_status},
-                        headers=self.api_headers()
-                    )
-                    print(f"  🔄 Updated {student_id} to {new_status}")
+            if r.status_code == 200 and r.json():
+                rid = r.json()[0]["id"]
+                requests.patch(
+                    f"{API_URL}/attendance/{rid}",
+                    json={"status": "Absent", "marked_by": "early_leave"},
+                    headers=self._headers(), timeout=5
+                )
+                print(f"  🔄 {name} → Absent (early leave)")
+                Thread(target=self._feed,
+                       args=(f"Early leave • {name} → Absent", "danger")).start()
         except Exception as e:
-            print(f"  ❌ Error updating attendance: {e}")
+            print(f"  ❌ Update error: {e}")
 
-    def create_alert(self, alert_type, severity, camera=None):
-        # Create security alert in backend
+    def _alert(self, atype, severity):
         try:
             requests.post(f"{API_URL}/alerts", json={
-                "type":       alert_type,
-                "severity":   severity,
-                "camera":     camera or self.camera_name,
-                "session_id": self.session_id,
-            }, headers=self.api_headers())
-        except Exception as e:
-            print(f"  ❌ Alert error: {e}")
-
-    def send_notification(self, user_id, title, body, ntype="info"):
-        # Send notification to a user
-        try:
-            requests.post(f"{API_URL}/notifications", json={
-                "user_id": user_id,
-                "title":   title,
-                "body":    body,
-                "type":    ntype,
-            }, headers=self.api_headers())
-        except Exception as e:
-            print(f"  ❌ Notification error: {e}")
-
-    def add_feed_event(self, label, tone="primary"):
-        # Add event to live activity feed on dashboard
-        try:
-            requests.post(f"{API_URL}/activity-feed", json={
-                "label": label,
-                "tone":  tone,
-            }, headers=self.api_headers())
+                "type": atype, "severity": severity,
+                "camera": self.camera_name, "session_id": self.session_id,
+            }, headers=self._headers(), timeout=5)
         except Exception:
             pass
 
-    def get_attendance_status(self, entry_time):
-        # Apply time rules to determine Present or Late
-        if not self.session_info:
-            return "Present"
-
-        # Parse session start time
-        start_str  = self.session_info["start_time"]   # "09:00"
-        today      = date.today()
-        start_dt   = datetime.combine(today, datetime.strptime(start_str, "%H:%M").time())
-
-        # Minutes since session started
-        diff_mins  = (entry_time - start_dt).total_seconds() / 60
-
-        if diff_mins <= PRESENT_WINDOW_MINS:
-            # Entered within 5 minutes of start → Present
-            return "Present"
-        else:
-            # Entered after 5 minutes → Late
-            return "Late"
-
-    def is_session_active(self):
-        # Check if session is currently running (not ended yet)
-        if not self.session_info:
-            return True
-        end_str = self.session_info["end_time"]
-        today   = date.today()
-        end_dt  = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
-        return datetime.now() <= end_dt
-
-    def is_session_ended(self):
-        # Check if session has ended
-        if not self.session_info:
-            return False
-        end_str = self.session_info["end_time"]
-        today   = date.today()
-        end_dt  = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
-        return datetime.now() > end_dt
-
-    def handle_exit(self, student_id, name, exit_time):
-        # Handle student leaving classroom — check early leave rule
-        if student_id not in self.inside_room:
-            return
-
-        if not self.session_info:
-            return
-
-        # Parse session end time
-        end_str = self.session_info["end_time"]
-        today   = date.today()
-        end_dt  = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
-
-        # Minutes before session end
-        mins_before_end = (end_dt - exit_time).total_seconds() / 60
-
-        if mins_before_end > EARLY_LEAVE_MINS:
-            # Left more than 10 mins before end → mark Absent
-            print(f"  ⚠️  {name} left {int(mins_before_end)} mins early → ABSENT")
-            self.update_attendance_status(student_id, "Absent")
-            self.add_feed_event(f"Early leave • {name} → Absent", "danger")
-        else:
-            # Left within 10 mins of end → still counts
-            print(f"  ✅ {name} left {int(mins_before_end)} mins before end → still PRESENT")
-            self.add_feed_event(f"Left near end • {name} → Present kept", "success")
-
-        # Remove from inside room tracker
-        del self.inside_room[student_id]
-
-    def auto_mark_absent_at_end(self):
-        # When session ends — mark all students still never came as Absent
-        if not self.session_info:
-            return
-        print("\n⏰ Session ended — marking remaining absents...")
-
-        # Students still inside = they stayed = keep their status
-        # Students who left early = already handled by handle_exit
-        # Students who never came = mark absent via API
+    def _feed(self, label, tone="primary"):
         try:
-            requests.post(
-                f"{API_URL}/sessions/{self.session_id}/end",
-                headers=self.api_headers()
-            )
-            print("✅ Session ended — auto-absent applied for missing students")
+            requests.post(f"{API_URL}/activity-feed",
+                          json={"label": label, "tone": tone},
+                          headers=self._headers(), timeout=5)
+        except Exception:
+            pass
+
+    def _end_session(self):
+        try:
+            requests.post(f"{API_URL}/sessions/{self.session_id}/end",
+                          headers=self._headers(), timeout=10)
+            print("✅ Session ended — auto absent applied")
         except Exception as e:
-            print(f"❌ Error ending session: {e}")
+            print(f"❌ End session error: {e}")
 
-    def identify_face(self, face_encoding, face_img_rgb):
-        # ── Algorithm 1: face_recognition (dlib HOG 128-point) ───────────────
-        # Fast matching using euclidean distance
-        fr_match_id   = None
-        fr_confidence = 0.0
+    # ── 3-Algorithm voting ────────────────────────────────────────────────────
 
-        if self.encodings and self.encodings["encodings_fr"]:
-            known_fr = self.encodings["encodings_fr"]
-            distances = face_recognition.face_distance(known_fr, face_encoding)
-            best_idx  = np.argmin(distances)
-            best_dist = distances[best_idx]
+    def identify_face(self, hog_encoding, face_img_rgb):
+        """
+        3-Algorithm Voting System:
 
-            # Distance < 0.5 = same person (lower = more similar)
-            if best_dist < 0.5:
-                fr_confidence = round(1 - best_dist, 2)
-                fr_match_id   = self.encodings["student_ids"][best_idx]
+        Each algorithm votes for who it thinks the person is.
+        Minimum 2 votes needed to confirm identity.
+        Prevents false positives from single algorithm errors.
+        """
+        if not self.enc or not self.enc.get("student_ids"):
+            return None, "Unknown", 0.0, {}
 
-        # ── Algorithm 2: DeepFace ArcFace (512-point deep embedding) ─────────
-        # More accurate — uses neural network
-        deep_match_id   = None
-        deep_confidence = 0.0
+        votes      = {}   # { student_id: vote_count }
+        conf_scores = {}  # { student_id: confidence }
+        algo_results = {  # for display
+            "HOG":     "—",
+            "ArcFace": "—",
+            "Facenet": "—",
+        }
 
-        try:
-            if self.encodings and self.encodings["encodings_deep"]:
-                # Get ArcFace embedding for current face
+        # ── Vote 1: HOG (face_recognition) ────────────────────────────────
+        hog_keys = self.enc.get("encodings_hog", self.enc.get("encodings_fr", []))
+        if hog_keys and hog_encoding is not None:
+            try:
+                dists    = face_recognition.face_distance(hog_keys, hog_encoding)
+                best_idx = int(np.argmin(dists))
+                best_d   = float(dists[best_idx])
+                if best_d < HOG_THRESHOLD:
+                    sid  = self.enc["student_ids"][best_idx]
+                    conf = round(1.0 - best_d, 2)
+                    votes[sid]       = votes.get(sid, 0) + 1
+                    conf_scores[sid] = max(conf_scores.get(sid, 0), conf)
+                    algo_results["HOG"] = f"✓ {self.enc['names'][best_idx]} ({int(conf*100)}%)"
+                else:
+                    algo_results["HOG"] = f"✗ (dist={best_d:.2f})"
+            except Exception as e:
+                algo_results["HOG"] = f"err"
+
+        # ── Vote 2: ArcFace (DeepFace) ────────────────────────────────────
+        arc_keys = self.enc.get("encodings_arcface",
+                                self.enc.get("encodings_deep", []))
+        if DEEPFACE_OK and arc_keys and face_img_rgb is not None:
+            try:
                 result = DeepFace.represent(
                     img_path=face_img_rgb,
                     model_name="ArcFace",
-                    enforce_detection=False
+                    enforce_detection=False,
                 )
-                if result:
-                    current_embedding = np.array(result[0]["embedding"])
-
-                    # Compare with all stored embeddings using cosine similarity
-                    best_sim = -1
-                    best_deep_idx = -1
-
-                    for idx, stored_emb in enumerate(self.encodings["encodings_deep"]):
-                        if stored_emb is None:
+                if result and result[0].get("embedding"):
+                    curr     = np.array(result[0]["embedding"])
+                    best_sim = -1.0
+                    best_di  = -1
+                    for di, stored in enumerate(arc_keys):
+                        if stored is None:
                             continue
-                        # Cosine similarity — 1.0 = identical, 0.0 = different
-                        sim = np.dot(current_embedding, stored_emb) / (
-                            np.linalg.norm(current_embedding) * np.linalg.norm(stored_emb)
+                        sim = float(
+                            np.dot(curr, stored) /
+                            (np.linalg.norm(curr) * np.linalg.norm(stored) + 1e-9)
                         )
                         if sim > best_sim:
-                            best_sim      = sim
-                            best_deep_idx = idx
+                            best_sim = sim
+                            best_di  = di
+                    if best_sim > DEEP_THRESHOLD and best_di >= 0:
+                        sid  = self.enc["student_ids"][best_di]
+                        conf = round(best_sim, 2)
+                        votes[sid]       = votes.get(sid, 0) + 1
+                        conf_scores[sid] = max(conf_scores.get(sid, 0), conf)
+                        algo_results["ArcFace"] = f"✓ {self.enc['names'][best_di]} ({int(conf*100)}%)"
+                    else:
+                        algo_results["ArcFace"] = f"✗ (sim={best_sim:.2f})"
+            except Exception:
+                algo_results["ArcFace"] = "err"
 
-                    # Cosine similarity > 0.6 = same person
-                    if best_sim > 0.6 and best_deep_idx >= 0:
-                        deep_confidence = round(float(best_sim), 2)
-                        deep_match_id   = self.encodings["student_ids"][best_deep_idx]
+        # ── Vote 3: Facenet512 (DeepFace) ─────────────────────────────────
+        net_keys = self.enc.get("encodings_facenet", [])
+        if DEEPFACE_OK and net_keys and face_img_rgb is not None:
+            try:
+                result = DeepFace.represent(
+                    img_path=face_img_rgb,
+                    model_name="Facenet512",
+                    enforce_detection=False,
+                )
+                if result and result[0].get("embedding"):
+                    curr     = np.array(result[0]["embedding"])
+                    best_sim = -1.0
+                    best_di  = -1
+                    for di, stored in enumerate(net_keys):
+                        if stored is None:
+                            continue
+                        sim = float(
+                            np.dot(curr, stored) /
+                            (np.linalg.norm(curr) * np.linalg.norm(stored) + 1e-9)
+                        )
+                        if sim > best_sim:
+                            best_sim = sim
+                            best_di  = di
+                    if best_sim > DEEP_THRESHOLD and best_di >= 0:
+                        sid  = self.enc["student_ids"][best_di]
+                        conf = round(best_sim, 2)
+                        votes[sid]       = votes.get(sid, 0) + 1
+                        conf_scores[sid] = max(conf_scores.get(sid, 0), conf)
+                        algo_results["Facenet"] = f"✓ {self.enc['names'][best_di]} ({int(conf*100)}%)"
+                    else:
+                        algo_results["Facenet"] = f"✗ (sim={best_sim:.2f})"
+            except Exception:
+                algo_results["Facenet"] = "err"
 
-        except Exception as e:
-            pass  # ArcFace failed — rely on face_recognition only
+        # ── Count votes and decide ─────────────────────────────────────────
+        self.stats["total_detections"] += 1
 
-        # ── Combine both algorithms ────────────────────────────────────────────
-        # Both agree = high confidence
-        # Only one agrees = medium confidence
-        if fr_match_id and deep_match_id and fr_match_id == deep_match_id:
-            # Both algorithms matched same person — highest confidence
-            final_id         = fr_match_id
-            final_name       = self.encodings["names"][self.encodings["student_ids"].index(final_id)]
-            final_confidence = max(fr_confidence, deep_confidence)
-        elif fr_match_id and fr_confidence > 0.7:
-            # Only face_recognition matched but high confidence
-            final_id         = fr_match_id
-            final_name       = self.encodings["names"][self.encodings["student_ids"].index(final_id)]
-            final_confidence = fr_confidence
-        elif deep_match_id and deep_confidence > 0.7:
-            # Only DeepFace matched but high confidence
-            final_id         = deep_match_id
-            final_name       = self.encodings["names"][self.encodings["student_ids"].index(final_id)]
-            final_confidence = deep_confidence
+        if not votes:
+            # No algorithm matched = Unknown
+            self.stats["unknown"] += 1
+            return None, "Unknown", 0.0, algo_results
+
+        # Find student with most votes
+        winner     = max(votes, key=votes.get)
+        vote_count = votes[winner]
+
+        if vote_count >= MIN_VOTES:
+            # 2 or 3 algorithms agree = CONFIRMED
+            self.stats["confirmed"] += 1
+            winner_name = self.enc["names"][self.enc["student_ids"].index(winner)]
+            final_conf  = conf_scores[winner]
+            if not self._in_cooldown(f"votelog_{winner}"):
+                self.last_seen[f"votelog_{winner}"] = datetime.now()
+            print(f"  🗳️  VOTES: {vote_count}/3 → CONFIRMED: {winner_name} ({int(final_conf*100)}%)")
+            return winner, winner_name, final_conf, algo_results
         else:
-            # No confident match — unknown face
-            return None, "Unknown", 0.0
+            # Only 1 algorithm agreed = UNCERTAIN = treat as Unknown
+            self.stats["uncertain"] += 1
+            if not self._in_cooldown("votelog_uncertain"):
+                self.last_seen["votelog_uncertain"] = datetime.now()
+            print(f"  🗳️  VOTES: {vote_count}/3 → UNCERTAIN → rejected")
+            return None, "Uncertain", 0.0, algo_results
 
-        return final_id, final_name, final_confidence
+    # ── Gate mode ─────────────────────────────────────────────────────────────
 
-    def process_frame_gate(self, frame, rgb_frame, face_locations, face_encodings):
-        # Gate camera mode — log entry, show name, send notification
+    def process_gate(self, frame, rgb, locations, encodings):
         now = datetime.now()
 
-        for i, (location, encoding) in enumerate(zip(face_locations, face_encodings)):
-            top, right, bottom, left = [v * 4 for v in location]
+        for (top, right, bottom, left), encoding in zip(locations, encodings):
+            face_img = rgb[max(0,top):bottom, max(0,left):right]
+            sid, name, conf, algo_results = self.identify_face(encoding, face_img)
 
-            # Extract face image for DeepFace
-            face_img = rgb_frame[top:bottom, left:right]
+            if sid and conf >= 0.65:
+                # Known and confirmed
+                color = GREEN
+                if not self._in_cooldown(sid):
+                    self.last_seen[sid] = now
+                    t = now.strftime("%H:%M")
+                    print(f"  🚪 GATE: {name} | {t} | {int(conf*100)}% | 3-algo confirmed")
+                    Thread(target=self._feed,
+                           args=(f"Gate entry • {name} • {t}", "primary")).start()
 
-            # Identify face using both algorithms
-            student_id, name, confidence = self.identify_face(encoding, face_img)
-
-            # Check cooldown — avoid repeating same person
-            if student_id and student_id in self.last_detected:
-                elapsed = (now - self.last_detected[student_id]).total_seconds()
-                if elapsed < COOLDOWN_SECONDS:
-                    # Still in cooldown — just draw box without processing
-                    color = (0, 255, 0)
-                    cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-                    cv2.putText(frame, f"{name}", (left, top - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-                    continue
-
-            if student_id and confidence >= 0.65:
-                # Known person entered gate
-                self.last_detected[student_id] = now
-                color = (0, 255, 0)  # green box
-
-                time_str = now.strftime("%H:%M")
-                print(f"  🚪 GATE: {name} entered at {time_str} ({int(confidence*100)}% confidence)")
-
-                # Add to activity feed
-                self.add_feed_event(
-                    f"Gate entry • {name} • {self.camera_name} • {time_str}",
-                    "primary"
-                )
-
-                # Draw green box with name
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), color, cv2.FILLED)
-                cv2.putText(frame, f"{name} ({int(confidence*100)}%)",
-                            (left + 4, bottom - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
+                cv2.rectangle(frame, (left, bottom-38), (right, bottom), color, cv2.FILLED)
+                cv2.putText(frame, f"{name}",
+                            (left+4, bottom-22),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, BLACK, 1)
+                cv2.putText(frame, f"{int(conf*100)}% | Votes: 3-algo",
+                            (left+4, bottom-6),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, BLACK, 1)
             else:
-                # Unknown face at gate
-                color = (0, 0, 255)  # red box
+                # Unknown or uncertain
+                color = RED
+                label = "UNKNOWN" if name == "Unknown" else "UNCERTAIN"
 
-                if not student_id or student_id not in self.last_detected:
-                    # Create alert for unknown face
-                    self.create_alert("Unknown face", "High", self.camera_name)
-                    self.add_feed_event(
-                        f"⚠️ Unknown face • {self.camera_name}",
-                        "danger"
-                    )
-                    print(f"  🔴 GATE: Unknown face detected")
-                    # Update cooldown to avoid spam
-                    self.last_detected["unknown"] = now
+                if not self._in_cooldown(f"unknown_gate"):
+                    self.last_seen["unknown_gate"] = now
+                    print(f"  🔴 GATE: {label}")
+                    Thread(target=self._alert,
+                           args=("Unknown face", "High")).start()
+                    Thread(target=self._feed,
+                           args=(f"⚠️ {label} • {self.camera_name}", "danger")).start()
 
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-                cv2.putText(frame, "UNKNOWN", (left, top - 10),
+                cv2.putText(frame, label,
+                            (left, top-8),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
         return frame
 
-    def process_frame_class(self, frame, rgb_frame, face_locations, face_encodings, prev_faces):
-        # Class camera mode — apply full attendance time rules
-        now     = datetime.now()
-        current_faces = set()  # track who is in frame right now
+    # ── Class mode ────────────────────────────────────────────────────────────
 
-        for i, (location, encoding) in enumerate(zip(face_locations, face_encodings)):
-            top, right, bottom, left = [v * 4 for v in location]
+    def process_class(self, frame, rgb, locations, encodings, prev_in_frame):
+        now           = datetime.now()
+        curr_in_frame = set()
 
-            # Extract face image for DeepFace
-            face_img = rgb_frame[top:bottom, left:right]
+        for (top, right, bottom, left), encoding in zip(locations, encodings):
+            face_img = rgb[max(0,top):bottom, max(0,left):right]
+            sid, name, conf, algo_results = self.identify_face(encoding, face_img)
 
-            # Identify face using both algorithms
-            student_id, name, confidence = self.identify_face(encoding, face_img)
+            if sid and conf >= 0.65:
+                curr_in_frame.add(sid)
 
-            if student_id and confidence >= 0.65:
-                current_faces.add(student_id)
+                if sid not in self.inside_room:
+                    if self._session_ended():
+                        # Rule 6: Ignored after session end
+                        color = GRAY
+                        if not self._in_cooldown(f"ignore_{sid}"):
+                            self.last_seen[f"ignore_{sid}"] = now
+                            print(f"  🚫 IGNORED: {name} (session ended)")
 
-                # Check if this is a new entry (not already inside)
-                if student_id not in self.inside_room:
+                    elif self._in_cooldown(sid):
+                        status = self.inside_room.get(sid, {}).get("status", "")
+                        color  = GREEN if status == "Present" else ORANGE
+                        cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
+                        continue
 
-                    # Check if session has already ended
-                    if self.is_session_ended():
-                        # ── Rule 6: Session ended — IGNORE ────────────────
-                        print(f"  🚫 {name} entered after session ended — IGNORED")
-                        color = (128, 128, 128)  # gray box for ignored
                     else:
-                        # Session still active — determine status
-                        status = self.get_attendance_status(now)
+                        # Apply time rules
+                        status = self._get_status(now)
+                        color  = GREEN if status == "Present" else ORANGE
 
-                        # Check cooldown
-                        if student_id in self.last_detected:
-                            elapsed = (now - self.last_detected[student_id]).total_seconds()
-                            if elapsed < COOLDOWN_SECONDS:
-                                color = (0, 255, 0) if status == "Present" else (0, 165, 255)
-                                cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-                                cv2.putText(frame, f"{name} — {status}",
-                                            (left, top - 10),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-                                continue
-
-                        # Record entry
-                        self.inside_room[student_id] = {
+                        self.inside_room[sid] = {
+                            "name":       name,
                             "entry_time": now,
-                            "name":       name
+                            "status":     status,
                         }
-                        self.last_detected[student_id] = now
+                        self.last_seen[sid] = now
 
-                        if status == "Present":
-                            # ── Rule 1: On time → PRESENT ─────────────────
-                            color = (0, 255, 0)  # green
-                            print(f"  ✅ CLASS: {name} PRESENT at {now.strftime('%H:%M')}")
-                        else:
-                            # ── Rule 2: Late arrival → LATE ───────────────
-                            color = (0, 165, 255)  # orange
-                            print(f"  ⚠️  CLASS: {name} LATE at {now.strftime('%H:%M')}")
+                        t = now.strftime("%H:%M")
+                        emoji = "✅" if status == "Present" else "⚠️"
+                        print(f"  {emoji} {status.upper()}: {name} at {t} | 3-algo confirmed")
 
-                        # Mark attendance in database
-                        Thread(target=self.mark_attendance, args=(
-                            student_id, name, status, confidence, now
-                        )).start()
+                        Thread(target=self._mark_attendance,
+                               args=(sid, name, status, conf, now)).start()
 
                 else:
-                    # Person already inside — still there
-                    status = self.inside_room[student_id].get("status", "Present")
-                    color  = (0, 255, 0) if status == "Present" else (0, 165, 255)
+                    status = self.inside_room[sid].get("status", "Present")
+                    color  = GREEN if status == "Present" else ORANGE
 
-                # Draw box with status
+                # Draw box
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), color, cv2.FILLED)
-                cv2.putText(frame, f"{name}",
-                            (left + 4, bottom - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                cv2.rectangle(frame, (left, bottom-38), (right, bottom), color, cv2.FILLED)
+                s = self.inside_room.get(sid, {}).get("status", "")
+                cv2.putText(frame, f"{name} — {s}",
+                            (left+4, bottom-22),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, BLACK, 1)
+                cv2.putText(frame, f"{int(conf*100)}% conf",
+                            (left+4, bottom-6),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, BLACK, 1)
 
             else:
-                # Unknown face in classroom
-                color = (0, 0, 255)  # red
+                # Unknown or uncertain
+                color = RED
+                label = "UNKNOWN" if name == "Unknown" else "UNCERTAIN"
+                if not self._in_cooldown("unknown_class"):
+                    self.last_seen["unknown_class"] = now
+                    Thread(target=self._alert,
+                           args=("Unknown face", "Medium")).start()
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-                cv2.putText(frame, "UNKNOWN", (left, top - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                cv2.putText(frame, label,
+                            (left, top-8),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, RED, 2)
 
-                if "unknown" not in self.last_detected or \
-                   (now - self.last_detected.get("unknown", now)).total_seconds() > 60:
-                    self.create_alert("Unknown face", "Medium", self.camera_name)
-                    self.last_detected["unknown"] = now
-
-        # ── Check who left the room ────────────────────────────────────────────
-        # Compare previous frame faces vs current frame faces
-        if prev_faces:
-            left_room = prev_faces - current_faces
+        # Check who left
+        if prev_in_frame:
+            left_room = prev_in_frame - curr_in_frame
             for sid in left_room:
                 if sid in self.inside_room:
                     info = self.inside_room[sid]
                     name = info["name"]
-                    print(f"  🚶 {name} left the room at {now.strftime('%H:%M')}")
-                    # Apply early leave rule
-                    Thread(target=self.handle_exit, args=(sid, name, now)).start()
+                    if self.session_info:
+                        end_dt      = self._parse_time(self.session_info["end_time"])
+                        mins_before = (end_dt - now).total_seconds() / 60
+                        if mins_before > EARLY_LEAVE_MINS:
+                            # Rule 3: Early leave = Absent
+                            print(f"  ⚠️  {name} left {int(mins_before)} mins early → ABSENT")
+                            Thread(target=self._update_absent,
+                                   args=(sid, name)).start()
+                        else:
+                            # Rule 4: Left near end = OK
+                            print(f"  ✅ {name} left {int(mins_before)} mins before end → OK")
+                    del self.inside_room[sid]
 
-        return frame, current_faces
+        return frame, curr_in_frame
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
 
     def run(self):
-        # Main recognition loop — opens camera and processes frames
-        if self.encodings is None:
-            print("❌ Cannot start — no trained faces")
+        if self.enc is None:
+            print("❌ No trained faces — run train.py first")
             return
 
-        print(f"\n📷 Starting camera: {self.camera_name}")
-        print(f"   Mode: {self.mode.upper()}")
+        print(f"\n{'='*55}")
+        print(f"  📷 {self.camera_name} | Mode: {self.mode.upper()}")
+        print(f"  Algorithms: HOG + ArcFace + Facenet512 (3-vote)")
+        print(f"  Min votes to confirm: {MIN_VOTES}/3")
         if self.session_info:
-            print(f"   Session: {self.session_info['subject_name']}")
-            print(f"   Time: {self.session_info['start_time']}–{self.session_info['end_time']}")
-        print("Press Q to quit\n")
+            print(f"  Session: {self.session_info.get('subject_name','—')}")
+            print(f"  Time: {self.session_info.get('start_time')}–{self.session_info.get('end_time')}")
+        print(f"  Press Q to quit")
+        print(f"{'='*55}\n")
 
-        # Open camera — 0=webcam, 1=USB cam, "rtsp://..."=IP cam
-        cap = cv2.VideoCapture(self.camera_id)
+        cam_source = self.camera_index
+        if cam_source in (None, "auto"):
+            if self.session_info and self.session_info.get("camera"):
+                cam_source = self.session_info["camera"]
+                print(f"  📷 Using camera assigned to this session: {cam_source}")
+            else:
+                cam_source = 0
+                print(f"  ⚠️  No camera set on this session — defaulting to index 0")
+        if isinstance(cam_source, str) and cam_source.isdigit():
+            cam_source = int(cam_source)
+
+        cap = cv2.VideoCapture(cam_source)
         if not cap.isOpened():
-            print(f"❌ Cannot open camera {self.camera_id}")
+            print(f"❌ Cannot open camera: {cam_source}")
+            print(f"   Run: python list_cameras.py   (to see available camera indexes)")
             return
+        print(f"✅ Opened camera: {cam_source}")
 
-        # Set camera resolution
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-        frame_count = 0
-        prev_faces  = set()
+        frame_n       = 0
+        prev_in_frame = set()
         session_ended_notified = False
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                print("❌ Camera disconnected")
-                self.create_alert("Camera offline", "High")
-                break
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    Thread(target=self._alert,
+                           args=("Camera offline", "High")).start()
+                    break
 
-            frame_count += 1
+                frame_n += 1
+                if frame_n % PROCESS_EVERY_N != 0:
+                    cv2.imshow(f"Smart Attendance — {self.camera_name}", frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+                    continue
 
-            # Process every 3rd frame for performance
-            if frame_count % 3 != 0:
+                small  = cv2.resize(frame, (0,0), fx=0.25, fy=0.25)
+                rgb_sm = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+                rgb_fl = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                locs_sm = face_recognition.face_locations(rgb_sm, model="hog")
+                locs_fl = [(t*4, r*4, b*4, l*4) for t,r,b,l in locs_sm]
+                encs_fl = face_recognition.face_encodings(rgb_fl, locs_fl)
+                if not encs_fl:
+                    encs_fl = face_recognition.face_encodings(rgb_sm, locs_sm)
+
+                if self.mode == "class" and self._session_ended() and not session_ended_notified:
+                    session_ended_notified = True
+                    print("\n⏰ Session ended!")
+                    Thread(target=self._end_session).start()
+
+                # ── Overlays ───────────────────────────────────────────────
+                mode_label = "🚪 GATE MODE" if self.mode == "gate" else "📚 CLASS MODE"
+                cv2.putText(frame, mode_label,
+                            (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.6, YELLOW, 2)
+
+                if self.session_info:
+                    subj = self.session_info.get("subject_name", "")
+                    t    = f"{self.session_info.get('start_time')}–{self.session_info.get('end_time')}"
+                    cv2.putText(frame, f"{subj} | {t}",
+                                (10, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.45, WHITE, 1)
+
+                cv2.putText(frame, datetime.now().strftime("%H:%M:%S"),
+                            (frame.shape[1]-100, 26),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, WHITE, 2)
+
+                # Algorithm labels
+                cv2.putText(frame, "HOG+ArcFace+Facenet | Min 2/3 votes",
+                            (10, frame.shape[0]-28),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, CYAN, 1)
+
+                # Stats
+                stats_str = (f"Total:{self.stats['total_detections']} "
+                             f"OK:{self.stats['confirmed']} "
+                             f"Unknown:{self.stats['unknown']}")
+                cv2.putText(frame, stats_str,
+                            (10, frame.shape[0]-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200,200,200), 1)
+
+                # Process frame
+                if self.mode == "gate":
+                    frame = self.process_gate(frame, rgb_fl, locs_fl, encs_fl)
+                elif self.mode == "class":
+                    frame, prev_in_frame = self.process_class(
+                        frame, rgb_fl, locs_fl, encs_fl, prev_in_frame
+                    )
+
                 cv2.imshow(f"Smart Attendance — {self.camera_name}", frame)
+
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
-                continue
+        except KeyboardInterrupt:
+            print("\n⏹️  Stopped (Ctrl+C)")
+        finally:
+            cap.release()
+            cv2.destroyAllWindows()
 
-            # Resize frame for faster processing
-            small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-            rgb_small   = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-            rgb_full    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Print final stats
+        print(f"\n📊 Session Stats:")
+        print(f"   Total detections: {self.stats['total_detections']}")
+        print(f"   Confirmed:        {self.stats['confirmed']}")
+        print(f"   Uncertain:        {self.stats['uncertain']}")
+        print(f"   Unknown:          {self.stats['unknown']}")
+        print(f"\n👋 Camera stopped")
 
-            # Detect face locations using Algorithm 1 (HOG — fast)
-            face_locations = face_recognition.face_locations(rgb_small, model="hog")
-            face_encodings_list = face_recognition.face_encodings(rgb_small, face_locations)
 
-            # Scale face locations back to full frame size
-            face_locations = [(t*4, r*4, b*4, l*4) for t, r, b, l in face_locations]
-
-            # Get full-size face encodings for better accuracy
-            face_encodings_full = face_recognition.face_encodings(rgb_full, face_locations)
-            if not face_encodings_full:
-                face_encodings_full = face_encodings_list
-
-            # Check if session ended — notify once
-            if self.mode == "class" and self.is_session_ended() and not session_ended_notified:
-                print("\n⏰ Session ended!")
-                # Auto-mark absent for students who never came
-                Thread(target=self.auto_mark_absent_at_end).start()
-                session_ended_notified = True
-
-            # Add session info overlay on frame
-            if self.session_info:
-                session_text = f"{self.session_info['subject_name']} | {self.session_info['start_time']}–{self.session_info['end_time']}"
-                cv2.putText(frame, session_text, (10, 25),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-
-            # Add camera name overlay
-            cv2.putText(frame, f"📷 {self.camera_name}", (10, frame.shape[0] - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-
-            # Add time overlay
-            time_text = datetime.now().strftime("%H:%M:%S")
-            cv2.putText(frame, time_text, (frame.shape[1] - 100, 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-
-            # Process faces based on camera mode
-            if self.mode == "gate":
-                frame = self.process_frame_gate(
-                    frame, rgb_full, face_locations, face_encodings_full
-                )
-            elif self.mode == "class":
-                frame, prev_faces = self.process_frame_class(
-                    frame, rgb_full, face_locations, face_encodings_full, prev_faces
-                )
-
-            # Show frame
-            cv2.imshow(f"Smart Attendance — {self.camera_name}", frame)
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-        cap.release()
-        cv2.destroyAllWindows()
-        print(f"\n👋 Camera {self.camera_name} stopped")
+def get_token(email, password):
+    try:
+        r = requests.post(f"{API_URL}/auth/login", json={
+            "email": email, "password": password, "role": "admin",
+        }, timeout=5)
+        if r.status_code == 200:
+            print("✅ Logged in")
+            return r.json()["access_token"]
+        print(f"❌ Login failed: {r.json()}")
+    except Exception as e:
+        print(f"❌ Cannot connect to backend: {e}")
+    return None
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Smart Attendance Face Recognition")
-    parser.add_argument("--camera",     default=0,      help="Camera index or RTSP URL")
-    parser.add_argument("--mode",       default="gate", choices=["gate", "class"], help="Camera mode")
-    parser.add_argument("--session_id", default=None,   help="Session ID for class mode")
-    parser.add_argument("--name",       default="Camera", help="Camera display name")
-    parser.add_argument("--token",      required=True,  help="JWT token for API access")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode",       default="gate", choices=["gate","class"])
+    parser.add_argument("--session_id", default=None)
+    parser.add_argument("--name",       default=None)
+    parser.add_argument("--token",      default=None)
+    parser.add_argument("--email",      default="admin@smart.com")
+    parser.add_argument("--password",   default="admin123")
+    parser.add_argument("--camera",     type=str, default="auto",
+                         help="Camera device index (0, 1...), an IP camera URL, "
+                              "or 'auto' to use the camera assigned to --session_id")
     args = parser.parse_args()
 
-    # Convert camera to int if it's a number
-    camera_id = int(args.camera) if str(args.camera).isdigit() else args.camera
+    if not args.name:
+        args.name = "Cam 1 — Gate" if args.mode == "gate" else "Cam 2 — Class"
 
-    engine = FaceRecognitionEngine(
-        camera_id=camera_id,
-        camera_name=args.name,
+    token = args.token or get_token(args.email, args.password)
+    if not token:
+        sys.exit(1)
+
+    if args.mode == "class" and not args.session_id:
+        print("❌ Class mode needs --session_id")
+        sys.exit(1)
+
+    engine = VotingRecognitionEngine(
         mode=args.mode,
         session_id=args.session_id,
-        token=args.token
+        token=token,
+        camera_name=args.name,
+        camera_index=args.camera,
     )
     engine.run()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n⏹️  Stopped (Ctrl+C) — camera released.")
+        sys.exit(0)

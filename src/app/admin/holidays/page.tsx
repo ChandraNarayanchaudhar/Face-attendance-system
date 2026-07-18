@@ -3,8 +3,9 @@
 // Holidays — add/delete holidays saved to database
 
 import * as React from "react";
-import { Plus, Trash2, Wand2 } from "lucide-react";
+import { Plus, RefreshCcw, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { HolidayCalendar } from "@/components/holiday-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,11 +20,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { apiPost, apiDelete } from "@/lib/api";
+import { useRealtime } from "@/hooks/useRealtime";
 
 export default function AdminHolidaysPage() {
-  const [data, setData] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const { data, loading, refresh } = useRealtime<any[]>({
+    endpoint: "/holidays",
+    liveEventType: "holidays_updated",
+  });
   const [open, setOpen] = React.useState(false);
   const [form, setForm] = React.useState({
     date: "",
@@ -31,19 +35,7 @@ export default function AdminHolidaysPage() {
     tag: "National",
   });
 
-  async function load() {
-    try {
-      setData(await apiGet<any[]>("/holidays"));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    load();
-  }, []);
+  const holidays = data ?? [];
 
   async function addHoliday() {
     if (!form.date || !form.name) return;
@@ -51,16 +43,7 @@ export default function AdminHolidaysPage() {
       await apiPost("/holidays", form);
       setOpen(false);
       setForm({ date: "", name: "", tag: "National" });
-      load();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  }
-
-  async function markToday() {
-    try {
-      await apiPost("/holidays/today", {});
-      load();
+      refresh();
     } catch (e: any) {
       alert(e.message);
     }
@@ -69,24 +52,25 @@ export default function AdminHolidaysPage() {
   async function remove(id: string) {
     try {
       await apiDelete(`/holidays/${id}`);
-      load();
+      refresh();
     } catch (e: any) {
       alert(e.message);
     }
   }
 
-  if (loading)
+  if (loading) {
     return <div className="p-8 text-muted-foreground">Loading holidays...</div>;
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Holidays"
-        description="Manage holidays. Changes visible to all students and teachers."
+        description="Manage holidays in the database. All changes update in real time for students and teachers."
         actions={
-          <>
-            <Button variant="outline" onClick={markToday}>
-              <Wand2 className="h-4 w-4" /> Mark today
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={refresh}>
+              <RefreshCcw className="mr-2 h-4 w-4" /> Refresh
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
@@ -143,21 +127,23 @@ export default function AdminHolidaysPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </>
+          </div>
         }
       />
 
+      <HolidayCalendar holidays={holidays} />
+
       <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Holiday list ({data.length})</CardTitle>
+          <CardTitle>Holiday list ({holidays.length})</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {data.length === 0 && (
+          {holidays.length === 0 && (
             <div className="text-sm text-muted-foreground py-4">
               No holidays added yet.
             </div>
           )}
-          {data.map((h: any) => (
+          {holidays.map((h: any) => (
             <div
               key={h.id}
               className="flex items-start justify-between gap-3 rounded-2xl border bg-background p-4 shadow-sm"

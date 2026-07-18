@@ -1,8 +1,7 @@
-# schemas.py — All Pydantic request/response models
 
 from __future__ import annotations
 from datetime import date, datetime
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +15,9 @@ class RegisterRequest(BaseModel):
     section: Optional[str] = None
     semester: Optional[str] = None
     department: Optional[str] = None
+    phone_number: Optional[str] = None
+    profile_image: Optional[str] = None
+    student_id: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -75,6 +77,7 @@ class TeacherOut(BaseModel):
     name: str
     email: str
     department: Optional[str]
+    teacher_semesters: Optional[List[str]] = None
     model_config = {"from_attributes": True}
 
 
@@ -83,6 +86,15 @@ class TeacherCreate(BaseModel):
     email: str
     password: str
     department: Optional[str] = None
+    teacher_semesters: Optional[Union[str, List[str]]] = None
+
+
+class TeacherUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    profile_image: Optional[str] = None
+    teacher_semesters: Optional[Union[str, List[str]]] = None
 
 
 # ── Subjects ──────────────────────────────────────────────────────────────────
@@ -119,6 +131,7 @@ class SessionCreate(BaseModel):
     teacher_id: Optional[str] = None
     room: Optional[str] = None
     camera: Optional[str] = None
+    semester: str
     start_time: str
     end_time: str
     session_date: Optional[date] = None
@@ -133,6 +146,7 @@ class SessionOut(BaseModel):
     teacher_name: Optional[str] = None
     room: Optional[str]
     camera: Optional[str] = None
+    semester: Optional[str] = None
     start_time: str
     end_time: str
     session_date: date

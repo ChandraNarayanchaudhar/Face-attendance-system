@@ -9,30 +9,45 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiGet } from "@/lib/api";
 
+type SessionItem = {
+  id: string;
+  subject_name: string;
+  room?: string;
+  camera?: string;
+  semester?: string;
+  start_time: string;
+  end_time: string;
+  session_date: string;
+  status: string;
+};
+
 export default function StudentSessionsPage() {
-  const [sessions, setSessions] = React.useState<any[]>([]);
+  const [sessions, setSessions] = React.useState<SessionItem[]>([]);
   const [loading, setLoading] = React.useState(true);
 
-  async function load() {
+  const load = React.useCallback(async () => {
     try {
       const today = new Date().toISOString().slice(0, 10);
-      setSessions(await apiGet<any[]>(`/sessions?session_date=${today}`));
+      setSessions(await apiGet<SessionItem[]>(`/sessions?session_date=${today}`));
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   React.useEffect(() => {
-    load();
+    async function fetchData() {
+      await load();
+    }
+    void fetchData();
     // Auto refresh every 30 seconds — catches session status changes
     const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [load]);
 
-  const upcoming = sessions.filter((s: any) => s.status !== "Completed");
-  const completed = sessions.filter((s: any) => s.status === "Completed");
+  const upcoming = sessions.filter((s) => s.status !== "Completed");
+  const completed = sessions.filter((s) => s.status === "Completed");
 
   if (loading)
     return <div className="p-8 text-muted-foreground">Loading sessions...</div>;
@@ -56,7 +71,7 @@ export default function StudentSessionsPage() {
             </div>
           )}
 
-          {upcoming.map((s: any) => (
+          {upcoming.map((s: SessionItem) => (
             <div
               key={s.id}
               className={`flex flex-col justify-between gap-4 rounded-2xl border p-4 shadow-sm sm:flex-row sm:items-center ${
@@ -75,9 +90,12 @@ export default function StudentSessionsPage() {
                   )}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  {s.room} • {s.start_time}–{s.end_time}
+                  {s.semester ? `Semester ${s.semester}` : "Semester —"} •{" "}
+                  {s.start_time}–{s.end_time}
                 </div>
-                {/* Camera info — student knows camera is monitoring */}
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {s.room ? `Room: ${s.room}` : "Room: —"}
+                </div>
                 {s.camera && (
                   <div className="mt-1 text-xs text-muted-foreground">
                     📷 Camera: {s.camera}
@@ -99,7 +117,7 @@ export default function StudentSessionsPage() {
               <div className="text-xs font-medium text-muted-foreground mb-2">
                 COMPLETED TODAY
               </div>
-              {completed.map((s: any) => (
+              {completed.map((s: SessionItem) => (
                 <div
                   key={s.id}
                   className="flex items-center justify-between gap-3 rounded-2xl border bg-muted/20 p-4 mb-2 opacity-60"
@@ -109,8 +127,16 @@ export default function StudentSessionsPage() {
                       {s.subject_name}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      {s.room} • {s.start_time}–{s.end_time}
+                      {s.semester ? `Semester ${s.semester}` : "Semester —"} • {s.start_time}–{s.end_time}
                     </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {s.room ? `Room: ${s.room}` : "Room: —"}
+                    </div>
+                    {s.camera && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        📷 Camera: {s.camera}
+                      </div>
+                    )}
                   </div>
                   <Badge variant="secondary">Completed</Badge>
                 </div>

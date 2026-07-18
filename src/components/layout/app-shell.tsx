@@ -27,7 +27,7 @@ import { useTheme } from "next-themes";
 
 import type { NavItem } from "@/lib/navigation";
 import { brand } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
+import { cn, getAvatarUrl, getInitials } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -39,7 +39,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,7 +63,7 @@ export function AppShell({ nav, user, children }: AppShellProps) {
 
   const handleLogout = () => {
     logout();
-    router.push('/');
+    router.push("/");
   };
   const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
     brand: GraduationCap,
@@ -125,13 +125,11 @@ export function AppShell({ nav, user, children }: AppShellProps) {
         <div className="rounded-2xl border bg-card p-3 shadow-sm">
           <div className="flex items-center gap-3">
             <Avatar className="h-9 w-9">
-              <AvatarFallback>
-                {user.name
-                  .split(" ")
-                  .map((p) => p[0])
-                  .slice(0, 2)
-                  .join("")}
-              </AvatarFallback>
+              <AvatarImage
+                src={getAvatarUrl(user.name) ?? undefined}
+                alt={user.name}
+              />
+              <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{user.name}</div>
@@ -204,7 +202,11 @@ export function AppShell({ nav, user, children }: AppShellProps) {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" aria-label="User menu">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="User menu"
+                    >
                       <User className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -227,4 +229,3 @@ export function AppShell({ nav, user, children }: AppShellProps) {
     </div>
   );
 }
-

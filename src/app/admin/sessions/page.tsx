@@ -4,7 +4,7 @@
 // Teachers can only VIEW
 
 import * as React from "react";
-import { Play, Plus, Square } from "lucide-react";
+import { Check, Copy, Play, Plus, Square } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,59 +31,139 @@ import {
 import { apiGet, apiPost, apiPatch } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth-store";
 
+type Teacher = {
+  id: string;
+  name: string;
+  department?: string;
+  teacher_semesters?: string[];
+};
+
+type Subject = {
+  id: string;
+  name: string;
+  code: string;
+};
+
+type SessionItem = {
+  id: string;
+  subject_name: string;
+  teacher_name?: string;
+  room?: string;
+  camera?: string;
+  semester?: string;
+  start_time: string;
+  end_time: string;
+  session_date: string;
+  status: string;
+};
+
+type SessionFormState = {
+  subject_id: string;
+  teacher_id: string;
+  room: string;
+  camera: string;
+  semester: string;
+  start_time: string;
+  end_time: string;
+};
+
 export default function AdminSessionsPage() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
 
-  const [data, setData] = React.useState<any[]>([]);
-  const [subjects, setSubjects] = React.useState<any[]>([]);
-  const [teachers, setTeachers] = React.useState<any[]>([]);
+  const [data, setData] = React.useState<SessionItem[]>([]);
+  const [subjects, setSubjects] = React.useState<Subject[]>([]);
+  const [teachers, setTeachers] = React.useState<Teacher[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [open, setOpen] = React.useState(false);
-  const [form, setForm] = React.useState({
+  const [copiedId, setCopiedId] = React.useState<string | null>(null);
+
+  const copySessionId = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+    } catch {
+      // Clipboard API unavailable — fail silently, ID is still visible on screen
+    }
+  };
+  const [form, setForm] = React.useState<SessionFormState>({
     subject_id: "",
     teacher_id: "",
     room: "",
     camera: "",
+    semester: "",
     start_time: "09:00",
     end_time: "10:30",
   });
 
-  async function load() {
+  const parseTeacherSemesters = (teacher: {
+    teacher_semesters?: string | string[];
+  }) => {
+    if (!teacher?.teacher_semesters) return [];
+    if (Array.isArray(teacher.teacher_semesters))
+      return teacher.teacher_semesters;
+    try {
+      const parsed = JSON.parse(teacher.teacher_semesters);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const isTeacherEligible = (
+    teacher: { teacher_semesters?: string | string[] },
+    semester: string,
+  ) => {
+    const semesters = parseTeacherSemesters(teacher);
+    return semesters.length === 0 || semesters.includes(semester);
+  };
+
+  const load = React.useCallback(async () => {
     try {
       const [ses, subs, tchs] = await Promise.all([
-        apiGet<any[]>("/sessions"),
-        apiGet<any[]>("/subjects"),
-        apiGet<any[]>("/teachers"),
+        apiGet<SessionItem[]>("/sessions"),
+        apiGet<Subject[]>("/subjects"),
+        apiGet<Teacher[]>("/teachers"),
       ]);
       setData(ses);
       setSubjects(subs);
       setTeachers(tchs);
-      if (subs.length && !form.subject_id) {
-        setForm((p) => ({ ...p, subject_id: subs[0].id }));
+      if (subs.length) {
+        setForm((p) => (p.subject_id ? p : { ...p, subject_id: subs[0].id }));
       }
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   React.useEffect(() => {
-    load();
-  }, []);
+    async function fetchData() {
+      await load();
+    }
+    void fetchData();
+  }, [load]);
 
   async function createSession() {
     try {
+      if (!form.semester) {
+        throw new Error("Please enter the session semester.");
+      }
       await apiPost("/sessions", form);
       setOpen(false);
       load();
-    } catch (e: any) {
-      alert(e.message);
+    } catch (error) {
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert("Failed to create session.");
+      }
     }
   }
 
-  async function toggleSession(s: any) {
+  async function toggleSession(s: SessionItem) {
     try {
       if (s.status === "Scheduled") {
         await apiPatch(`/sessions/${s.id}/status`, { status: "Live" });
@@ -91,8 +171,12 @@ export default function AdminSessionsPage() {
         await apiPost(`/sessions/${s.id}/end`, {});
       }
       load();
-    } catch (e: any) {
-      alert(e.message);
+    } catch (error) {
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert("Failed to update session status.");
+      }
     }
   }
 
@@ -127,7 +211,7 @@ export default function AdminSessionsPage() {
                 <DialogHeader>
                   <DialogTitle>Create session</DialogTitle>
                   <DialogDescription>
-                    Assign CCTV camera to auto-mark attendance.
+                    Assign an optional CCTV camera to auto-mark attendance.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4">
@@ -140,12 +224,36 @@ export default function AdminSessionsPage() {
                       }
                     >
                       <option value="">Select subject</option>
-                      {subjects.map((s: any) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} ({s.code})
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.name} ({subject.code})
                         </option>
                       ))}
                     </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="text-sm font-medium">Semester</div>
+                    <Input
+                      value={form.semester}
+                      onChange={(e) => {
+                        const semester = e.target.value;
+                        setForm((p) => {
+                          const selectedTeacher = teachers.find(
+                            (t) => t.id === p.teacher_id,
+                          );
+                          if (
+                            p.teacher_id &&
+                            semester &&
+                            selectedTeacher &&
+                            !isTeacherEligible(selectedTeacher, semester)
+                          ) {
+                            return { ...p, semester, teacher_id: "" };
+                          }
+                          return { ...p, semester };
+                        });
+                      }}
+                      placeholder="e.g. 6, 7, 8"
+                    />
                   </div>
                   <div className="grid gap-2">
                     <div className="text-sm font-medium">Teacher</div>
@@ -156,15 +264,27 @@ export default function AdminSessionsPage() {
                       }
                     >
                       <option value="">Select teacher</option>
-                      {teachers.map((t: any) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name} — {t.department}
-                        </option>
-                      ))}
+                      {teachers.map((t: Teacher) => {
+                        const eligible = form.semester
+                          ? isTeacherEligible(t, form.semester)
+                          : true;
+                        return (
+                          <option key={t.id} value={t.id} disabled={!eligible}>
+                            {t.name} — {t.department}
+                            {Array.isArray(t.teacher_semesters) &&
+                            t.teacher_semesters.length > 0
+                              ? ` (${t.teacher_semesters.join(", ")})`
+                              : ""}
+                            {form.semester && !eligible
+                              ? " — not assigned"
+                              : ""}
+                          </option>
+                        );
+                      })}
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <div className="text-sm font-medium">Room</div>
+                    <div className="text-sm font-medium">Room (optional)</div>
                     <Input
                       value={form.room}
                       onChange={(e) =>
@@ -174,7 +294,9 @@ export default function AdminSessionsPage() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <div className="text-sm font-medium">📷 Camera (CCTV)</div>
+                    <div className="text-sm font-medium">
+                      📷 Camera (optional)
+                    </div>
                     <Input
                       value={form.camera}
                       onChange={(e) =>
@@ -182,10 +304,6 @@ export default function AdminSessionsPage() {
                       }
                       placeholder="e.g. Cam 2 • Lab 2A  or  rtsp://admin:pass@192.168.1.100:554/stream"
                     />
-                    <div className="text-xs text-muted-foreground">
-                      USB cam: enter name like "Cam 2 Lab 2A" — IP/CCTV: enter
-                      full RTSP URL
-                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-2">
@@ -226,8 +344,10 @@ export default function AdminSessionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Session ID</TableHead>
                   <TableHead>Subject</TableHead>
                   <TableHead>Teacher</TableHead>
+                  <TableHead>Semester</TableHead>
                   <TableHead>Room</TableHead>
                   <TableHead>📷 Camera</TableHead>
                   <TableHead>Time</TableHead>
@@ -239,13 +359,31 @@ export default function AdminSessionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((s: any) => (
+                {data.map((s: SessionItem) => (
                   <TableRow key={s.id}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => copySessionId(s.id)}
+                        title={s.id}
+                        className="flex items-center gap-1 hover:text-foreground"
+                      >
+                        {s.id.slice(0, 8)}…
+                        {copiedId === s.id ? (
+                          <Check className="h-3 w-3 text-green-600" />
+                        ) : (
+                          <Copy className="h-3 w-3" />
+                        )}
+                      </button>
+                    </TableCell>
                     <TableCell className="font-medium">
                       {s.subject_name}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {s.teacher_name || "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {s.semester || "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {s.room}
@@ -301,7 +439,7 @@ export default function AdminSessionsPage() {
                 {data.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={isAdmin ? 8 : 7}
+                      colSpan={isAdmin ? 9 : 8}
                       className="text-center text-muted-foreground py-8"
                     >
                       No sessions found. Admin can create sessions.
@@ -314,7 +452,7 @@ export default function AdminSessionsPage() {
 
           {/* Mobile */}
           <div className="grid gap-3 p-4 md:hidden">
-            {data.map((s: any) => (
+            {data.map((s: SessionItem) => (
               <div
                 key={s.id}
                 className="rounded-2xl border bg-background p-4 shadow-sm"
@@ -325,13 +463,28 @@ export default function AdminSessionsPage() {
                       {s.subject_name}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      {s.room} • {s.start_time}–{s.end_time}
+                      {s.room} • Semester {s.semester || "—"}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {s.start_time}–{s.end_time}
                     </div>
                     {s.camera && (
                       <div className="text-xs text-muted-foreground mt-1">
                         📷 {s.camera}
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => copySessionId(s.id)}
+                      className="mt-2 flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      ID: {s.id.slice(0, 8)}…
+                      {copiedId === s.id ? (
+                        <Check className="h-3 w-3 text-green-600" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
                   </div>
                   {statusBadge(s.status)}
                 </div>

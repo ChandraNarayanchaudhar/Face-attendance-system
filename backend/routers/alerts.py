@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models, schemas
 from auth import require_role
+from routers.websocket import broadcast_sync
 
 router = APIRouter()
 
@@ -30,6 +31,11 @@ def create_alert(payload: schemas.AlertCreate, db: Session = Depends(get_db), _=
     db.add(a)
     db.commit()
     db.refresh(a)
+    broadcast_sync({
+        "type": "alert",
+        "data": {"id": a.id, "type": a.type, "severity": a.severity, "camera": a.camera},
+        "timestamp": a.created_at.isoformat() if a.created_at else None,
+    })
     return schemas.AlertOut.model_validate(a)
 
 

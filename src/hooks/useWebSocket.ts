@@ -1,100 +1,205 @@
 // WebSocket hook — connects dashboard to live face recognition events
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
+import { WS_BASE } from "@/lib/config";
+
+interface FaceDetectedEvent {
+  student_id: string;
+  name: string;
+  confidence: number;
+  status?: string;
+  camera: string;
+}
+
+interface AttendanceMarkedEvent {
+  student_id: string;
+  status: string;
+}
+
+interface AlertEvent {
+  type: string;
+  message: string;
+}
+
+interface FeedEvent {
+  id: string;
+  label: string;
+  tone: string;
+  created_at: string;
+}
 
 interface WSEvent {
   type: string;
-  data?: any;
+  data?: unknown;
   timestamp: string;
   message?: string;
 }
 
 interface UseWebSocketOptions {
-  onFaceDetected?: (data: any) => void;
-  onAttendanceMarked?: (data: any) => void;
-  onAlert?: (data: any) => void;
-  onFeedEvent?: (data: any) => void;
+  onFaceDetected?: (data: FaceDetectedEvent) => void;
+  onAttendanceMarked?: (data: AttendanceMarkedEvent) => void;
+  onAlert?: (data: AlertEvent) => void;
+  onFeedEvent?: (data: FeedEvent) => void;
+  onEvent?: (event: WSEvent) => void;
+}
+
+function buildWebSocketUrls() {
+  const baseUrl = `${WS_BASE.replace(/\/$/, "")}/dashboard`;
+  const rawUrls = [
+    baseUrl,
+    "ws://127.0.0.1:8000/ws/dashboard",
+    "ws://localhost:8000/ws/dashboard",
+  ];
+
+  if (typeof window !== "undefined") {
+    rawUrls.push(`ws://${window.location.hostname}:8000/ws/dashboard`);
+  }
+
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    rawUrls.push(...rawUrls.map((url) => url.replace(/^ws:/, "wss:")));
+  }
+
+  return Array.from(new Set(rawUrls));
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<WSEvent | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
-
-  const connect = useCallback(() => {
-    try {
-      // Connect to FastAPI WebSocket endpoint
-      const ws = new WebSocket("ws://localhost:8000/ws/dashboard");
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setIsConnected(true);
-        console.log("✅ WebSocket connected to live feed");
-        // Start ping to keep connection alive
-        const pingInterval = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "ping" }));
-          }
-        }, 30000);
-        // Store interval id for cleanup
-        (ws as any)._pingInterval = pingInterval;
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data: WSEvent = JSON.parse(event.data);
-          setLastEvent(data);
-
-          // Route event to correct handler
-          switch (data.type) {
-            case "face_detected":
-              options.onFaceDetected?.(data.data);
-              break;
-            case "attendance_marked":
-              options.onAttendanceMarked?.(data.data);
-              break;
-            case "alert":
-              options.onAlert?.(data.data);
-              break;
-            case "feed_event":
-              options.onFeedEvent?.(data.data);
-              break;
-            default:
-              break;
-          }
-        } catch (e) {
-          console.error("WS message parse error:", e);
-        }
-      };
-
-      ws.onclose = () => {
-        setIsConnected(false);
-        clearInterval((ws as any)._pingInterval);
-        console.log("❌ WebSocket disconnected — reconnecting in 3s...");
-        // Auto reconnect after 3 seconds
-        reconnectTimer.current = setTimeout(connect, 3000);
-      };
-
-      ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
-        ws.close();
-      };
-    } catch (e) {
-      console.error("WebSocket connection failed:", e);
-      // Retry after 5 seconds
-      reconnectTimer.current = setTimeout(connect, 5000);
-    }
-  }, []);
+  const wsRef = useRef<(WebSocket & { _pingInterval?: number }) | null>(null);
+  const reconnectTimer = useRef<number | null>(null);
+  const optionsRef = useRef<UseWebSocketOptions>(options);
 
   useEffect(() => {
-    connect();
-    return () => {
-      // Cleanup on unmount
-      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
-      if (wsRef.current) wsRef.current.close();
+    optionsRef.current = options;
+  }, [options]);
+
+  useEffect(() => {
+    let attempt = 0;
+    let mounted = true;
+    const urls = buildWebSocketUrls();
+
+    const cleanupWebSocket = () => {
+      if (wsRef.current) {
+        wsRef.current.onopen = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.onclose = null;
+        wsRef.current.onerror = null;
+        try {
+          wsRef.current.close();
+        } catch {}
+        wsRef.current = null;
+      }
     };
-  }, [connect]);
+
+    const scheduleReconnect = (delay: number) => {
+      if (!mounted) return;
+      if (reconnectTimer.current) window.clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = window.setTimeout(() => {
+        attempt = 0;
+        connect(urls[0]);
+      }, delay);
+    };
+
+    const connect = (url: string) => {
+      cleanupWebSocket();
+
+      try {
+        console.log("🔌 Trying WebSocket", url);
+        const ws = new WebSocket(url) as WebSocket & { _pingInterval?: number };
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!mounted) return;
+          setIsConnected(true);
+          console.log("✅ WebSocket connected to live feed", url);
+          ws._pingInterval = window.setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "ping" }));
+            }
+          }, 30000);
+        };
+
+        ws.onmessage = (event: MessageEvent<string>) => {
+          try {
+            const data = JSON.parse(event.data) as WSEvent;
+            if (mounted) {
+              setLastEvent(data);
+            }
+
+            const handlers = optionsRef.current;
+            switch (data.type) {
+              case "face_detected":
+                handlers.onFaceDetected?.(data.data as FaceDetectedEvent);
+                break;
+              case "attendance_marked":
+                handlers.onAttendanceMarked?.(
+                  data.data as AttendanceMarkedEvent,
+                );
+                break;
+              case "alert":
+                handlers.onAlert?.(data.data as AlertEvent);
+                break;
+              case "feed_event":
+                handlers.onFeedEvent?.(data.data as FeedEvent);
+                break;
+              default:
+                handlers.onEvent?.(data);
+                break;
+            }
+          } catch (error) {
+            console.error("WS message parse error:", error);
+          }
+        };
+
+        ws.onclose = (event: CloseEvent) => {
+          if (!mounted) return;
+          setIsConnected(false);
+          if (ws._pingInterval) window.clearInterval(ws._pingInterval);
+          console.warn("❌ WebSocket closed", {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            url,
+          });
+
+          if (attempt < urls.length - 1) {
+            attempt += 1;
+            const nextUrl = urls[attempt];
+            console.log("🔁 Retrying WebSocket with fallback URL", nextUrl);
+            window.setTimeout(() => connect(nextUrl), 500);
+          } else {
+            console.log("❌ WebSocket disconnected — reconnecting in 3s...");
+            scheduleReconnect(3000);
+          }
+        };
+
+        ws.onerror = (err: Event) => {
+          console.error("WebSocket connection failed:", err, "url=", url);
+          try {
+            ws.close();
+          } catch {}
+        };
+      } catch (e) {
+        console.error("WebSocket connect exception:", e, "url=", url);
+        if (attempt < urls.length - 1) {
+          attempt += 1;
+          window.setTimeout(() => connect(urls[attempt]), 500);
+        } else {
+          scheduleReconnect(5000);
+        }
+      }
+    };
+
+    connect(urls[attempt]);
+
+    return () => {
+      mounted = false;
+      if (reconnectTimer.current) {
+        window.clearTimeout(reconnectTimer.current);
+      }
+      cleanupWebSocket();
+    };
+  }, []);
 
   return { isConnected, lastEvent };
 }

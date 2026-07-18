@@ -11,6 +11,9 @@ export interface AuthUser {
   name: string;
   email: string;
   role: UserRole;
+  phone_number?: string;
+  profile_image?: string;
+  department?: string;
 }
 
 interface AuthStore {

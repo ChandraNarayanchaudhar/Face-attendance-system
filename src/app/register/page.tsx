@@ -1,6 +1,3 @@
-// src/app/register/page.tsx
-// Self-registration for students only
-
 "use client";
 
 import { useState } from "react";
@@ -8,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/auth-store";
 import { registerUser } from "@/lib/auth-utils";
+import { validateAndResizeImage, getImagePreviewUrl } from "@/lib/image-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -20,9 +18,13 @@ export default function RegisterPage() {
     email: "",
     password: "",
     confirmPassword: "",
+    student_id: "",
+    phone_number: "",
+    profileImage: "",
     section: "",
     semester: "",
   });
+  const [imageError, setImageError] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -34,15 +36,21 @@ export default function RegisterPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setImageError("");
     setIsLoading(true);
     try {
       if (
         !form.name ||
         !form.email ||
         !form.password ||
-        !form.confirmPassword
+        !form.confirmPassword ||
+        !form.student_id
       ) {
         setError("Fill in all fields.");
+        return;
+      }
+      if (!/^[0-9]{5}$/.test(form.student_id)) {
+        setError("Student ID must be exactly 5 digits.");
         return;
       }
       if (form.password.length < 6) {
@@ -62,6 +70,9 @@ export default function RegisterPage() {
         email: form.email,
         password: form.password,
         role: "student",
+        student_id: form.student_id,
+        phone_number: form.phone_number,
+        profile_image: form.profileImage || undefined,
         section: form.section,
         semester: form.semester,
       });
@@ -120,6 +131,51 @@ export default function RegisterPage() {
                 required
                 disabled={isLoading}
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Student ID</label>
+              <Input
+                name="student_id"
+                type="text"
+                placeholder="e.g. 30020"
+                value={form.student_id}
+                onChange={handleChange}
+                pattern="[0-9]{5}"
+                maxLength={5}
+                inputMode="numeric"
+                required
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Profile photo</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.currentTarget.files?.[0];
+                  if (!file) return;
+                  setImageError("");
+                  const { error, base64 } = await validateAndResizeImage(file);
+                  if (error) {
+                    setImageError(error);
+                    return;
+                  }
+                  setForm((p) => ({ ...p, profileImage: base64 ?? "" }));
+                }}
+                disabled={isLoading}
+                className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              />
+              {imageError && (
+                <div className="text-xs text-destructive">{imageError}</div>
+              )}
+              {form.profileImage && (
+                <img
+                  src={getImagePreviewUrl(form.profileImage)}
+                  alt="Profile preview"
+                  className="mt-3 h-24 w-24 rounded-2xl object-cover"
+                />
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Password</label>

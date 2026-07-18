@@ -10,8 +10,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { apiGet } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth-store";
 
 export default function TeacherDashboardPage() {
+  const user = useAuthStore((s) => s.user);
   const [stats, setStats] = React.useState({
     totalSessions: 0,
     completedSessions: 0,
@@ -21,25 +23,34 @@ export default function TeacherDashboardPage() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    const teacherId = user.id;
+
     async function load() {
       try {
-        // Get teacher's sessions
-        const sessions = await apiGet<any[]>("/sessions");
+        // Get only this teacher's sessions
+        const sessions = await apiGet<any[]>(
+          `/sessions?teacher_id=${encodeURIComponent(teacherId)}`,
+        );
         const completed = sessions.filter(
           (s) => s.status === "Completed",
         ).length;
 
-        // Get subjects taught
-        const subjects = await apiGet<any[]>("/subjects");
+        // Fetch real teacher dashboard stats from the backend
+        const dashboard = await apiGet<{
+          total_students: number;
+          avg_attendance_7d: number;
+        }>("/reports/dashboard");
 
         setStats({
           totalSessions: sessions.length,
           completedSessions: completed,
-          studentsEnrolled: subjects.reduce(
-            (acc, s) => acc + (s.students?.length || 0),
-            0,
-          ),
-          averageAttendance: 82.5,
+          studentsEnrolled: dashboard.total_students,
+          averageAttendance: dashboard.avg_attendance_7d ?? 0,
         });
       } catch (e) {
         console.error(e);
@@ -48,7 +59,7 @@ export default function TeacherDashboardPage() {
       }
     }
     load();
-  }, []);
+  }, [user]);
 
   if (loading) {
     return (

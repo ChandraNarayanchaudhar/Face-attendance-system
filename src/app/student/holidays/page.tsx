@@ -3,30 +3,21 @@
 // Student holidays — real holidays from database
 
 import * as React from "react";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { HolidayCalendar } from "@/components/holiday-calendar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiGet } from "@/lib/api";
+import { useRealtime } from "@/hooks/useRealtime";
 
 export default function StudentHolidaysPage() {
-  const [holidays, setHolidays] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const { data, loading, error, refresh } = useRealtime<any[]>({
+    endpoint: "/holidays",
+    liveEventType: "holidays_updated",
+  });
 
-  React.useEffect(() => {
-    async function load() {
-      try {
-        setHolidays(await apiGet<any[]>("/holidays"));
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
-
-  // Split into upcoming and past
+  const holidays = data ?? [];
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = holidays.filter((h: any) => h.date >= today);
   const past = holidays.filter((h: any) => h.date < today);
@@ -39,7 +30,14 @@ export default function StudentHolidaysPage() {
       <PageHeader
         title="Holidays"
         description="Upcoming and past holidays from the institution."
+        actions={
+          <Button variant="outline" onClick={refresh}>
+            <RefreshCcw className="mr-2 h-4 w-4" /> Refresh
+          </Button>
+        }
       />
+
+      <HolidayCalendar holidays={holidays} />
 
       {/* Upcoming */}
       <Card className="shadow-sm">

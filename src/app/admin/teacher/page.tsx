@@ -35,6 +35,7 @@ export default function AdminTeachersPage() {
     email: "",
     password: "",
     department: "",
+    teacher_semesters: "",
   });
 
   async function load() {
@@ -53,9 +54,17 @@ export default function AdminTeachersPage() {
 
   async function createTeacher() {
     try {
-      await apiPost("/teachers", form);
+      const semesters = form.teacher_semesters
+        .split(",")
+        .map((sem) => sem.trim())
+        .filter(Boolean);
+
+      await apiPost("/teachers", {
+        ...form,
+        teacher_semesters: semesters.length ? semesters : undefined,
+      });
       setCreating(false);
-      setForm({ name: "", email: "", password: "", department: "" });
+      setForm({ name: "", email: "", password: "", department: "", teacher_semesters: "" });
       load();
     } catch (e: any) {
       alert(e.message);
@@ -95,6 +104,7 @@ export default function AdminTeachersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Department</TableHead>
+                <TableHead>Semesters</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -107,6 +117,11 @@ export default function AdminTeachersPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {t.department || "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {Array.isArray(t.teacher_semesters) && t.teacher_semesters.length > 0
+                      ? t.teacher_semesters.join(", ")
+                      : "—"}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
@@ -186,6 +201,19 @@ export default function AdminTeachersPage() {
                   setForm((p) => ({ ...p, department: e.target.value }))
                 }
               />
+            </div>
+            <div className="grid gap-1">
+              <div className="text-sm font-medium">Assigned semesters</div>
+              <Input
+                placeholder="e.g. 6, 7, 8"
+                value={form.teacher_semesters}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, teacher_semesters: e.target.value }))
+                }
+              />
+              <div className="text-xs text-muted-foreground">
+                Enter semester values separated by commas. Leave empty to allow this teacher to cover any semester.
+              </div>
             </div>
           </div>
           <DialogFooter>

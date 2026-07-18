@@ -2,17 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiGet } from "@/lib/api";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
 interface UseRealtimeOptions<T> {
   endpoint: string; // API endpoint to fetch
   refreshInterval?: number; // polling interval in ms (default 15s)
   onUpdate?: (data: T) => void;
+  liveEventType?: string; // WebSocket event type to trigger refresh
 }
 
 export function useRealtime<T>({
   endpoint,
   refreshInterval = 15000,
   onUpdate,
+  liveEventType,
 }: UseRealtimeOptions<T>) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +34,21 @@ export function useRealtime<T>({
     } finally {
       setLoading(false);
     }
-  }, [endpoint]);
+  }, [endpoint, onUpdate]);
+
+  // Manual refresh function
+  const refresh = useCallback(() => {
+    setLoading(true);
+    fetch();
+  }, [fetch]);
+
+  useWebSocket({
+    onEvent: (event) => {
+      if (liveEventType && event.type === liveEventType) {
+        refresh();
+      }
+    },
+  });
 
   useEffect(() => {
     // Initial fetch
@@ -40,12 +57,6 @@ export function useRealtime<T>({
     const interval = setInterval(fetch, refreshInterval);
     return () => clearInterval(interval);
   }, [fetch, refreshInterval]);
-
-  // Manual refresh function
-  const refresh = useCallback(() => {
-    setLoading(true);
-    fetch();
-  }, [fetch]);
 
   return { data, loading, error, lastUpdated, refresh };
 }

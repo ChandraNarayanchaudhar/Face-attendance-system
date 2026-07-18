@@ -4,7 +4,7 @@
 import uuid
 from datetime import datetime, date
 from sqlalchemy import (
-    Column, String, Float, Boolean,
+    Column, String, Float, Boolean, Integer,
     DateTime, Date, ForeignKey, Text,
     Enum as SAEnum,
 )
@@ -22,6 +22,8 @@ class User(Base):
     name                   = Column(String, nullable=False)
     email                  = Column(String, unique=True, nullable=False, index=True)
     hashed_password        = Column(String, nullable=False)
+    phone_number           = Column(String, nullable=True)
+    profile_image          = Column(Text, nullable=True)  # base64 encoded image
     role                   = Column(SAEnum("student","teacher","admin", name="user_role"), nullable=False)
     is_active              = Column(Boolean, default=True)
     created_at             = Column(DateTime, default=datetime.utcnow)
@@ -32,6 +34,7 @@ class User(Base):
     overall_attendance_pct = Column(Float, default=0.0)
     # teacher
     department             = Column(String, nullable=True)
+    teacher_semesters      = Column(String, nullable=True)  # JSON list of assigned semesters: '["Sem1", "Sem2"]'
     # relationships
     attendance_records = relationship("AttendanceRecord", back_populates="student", foreign_keys="AttendanceRecord.student_id")
     notifications      = relationship("Notification", back_populates="user")
@@ -62,6 +65,7 @@ class Session(Base):
     start_time   = Column(String, nullable=False)
     end_time     = Column(String, nullable=False)
     session_date = Column(Date, default=date.today)
+    semester     = Column(String, nullable=True)
     status       = Column(SAEnum("Scheduled","Live","Completed", name="session_status"), default="Scheduled")
     started_at   = Column(DateTime, nullable=True)
     ended_at     = Column(DateTime, nullable=True)
@@ -133,3 +137,23 @@ class SystemSetting(Base):
     __tablename__ = "system_settings"
     key   = Column(String, primary_key=True)
     value = Column(Text, nullable=True)
+
+
+class FaceEncoding(Base):
+    """Trained face recognition data — one row per student.
+
+    Replaces the old models/encodings.pkl file so training data lives in the
+    same database as everything else and recognition reads live from here.
+    Encodings are stored as JSON-encoded arrays of floats (SQLite has no
+    native array/vector type).
+    """
+    __tablename__ = "face_encodings"
+    id               = Column(String, primary_key=True, default=_uuid)
+    student_id       = Column(String, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    name             = Column(String, nullable=False)
+    encoding_hog     = Column(Text, nullable=True)   # JSON list[128] — face_recognition HOG
+    encoding_arcface = Column(Text, nullable=True)   # JSON list[512] — DeepFace ArcFace
+    encoding_facenet = Column(Text, nullable=True)   # JSON list[512] — DeepFace Facenet512
+    photo_count      = Column(Integer, default=0)
+    created_at       = Column(DateTime, default=datetime.utcnow)
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
