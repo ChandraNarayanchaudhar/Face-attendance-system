@@ -96,6 +96,11 @@ export default function AdminAlertsPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="text-sm font-semibold">{a.type}</div>
                   {severityBadge(a.severity)}
+                  {a.image && (
+                    <Badge variant="secondary" className="gap-1">
+                      <Eye className="h-3 w-3" /> Photo
+                    </Badge>
+                  )}
                   <Badge
                     variant={
                       a.status === "Open"
@@ -158,8 +163,19 @@ export default function AdminAlertsPage() {
             <DialogTitle>Alert details</DialogTitle>
             <DialogDescription>Camera incident review.</DialogDescription>
           </DialogHeader>
-          <div className="aspect-video w-full rounded-2xl border bg-muted/40 flex items-center justify-center text-muted-foreground text-sm">
-            📷 Camera snapshot placeholder
+          <div className="aspect-video w-full overflow-hidden rounded-2xl border bg-muted/40 flex items-center justify-center">
+            {snapshot?.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={snapshot.image}
+                alt="Captured face at time of alert"
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <span className="text-muted-foreground text-sm">
+                📷 No screenshot captured for this alert
+              </span>
+            )}
           </div>
           {snapshot && (
             <div className="rounded-2xl border bg-muted/20 p-4 space-y-2 text-sm">

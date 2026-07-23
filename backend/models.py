@@ -110,6 +110,7 @@ class Alert(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     status     = Column(SAEnum("Open","Resolved","Ignored", name="alert_status"), default="Open")
     notes      = Column(Text, nullable=True)
+    image      = Column(Text, nullable=True)  # base64 data URL — face crop at time of alert
 
 
 class Notification(Base):

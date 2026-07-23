@@ -35,6 +35,11 @@ def _ensure_sqlite_schema():
         if "teacher_semesters" not in user_cols:
             cur.execute("ALTER TABLE users ADD COLUMN teacher_semesters TEXT")
 
+        cur.execute("PRAGMA table_info(alerts)")
+        alert_cols = [row[1] for row in cur.fetchall()]
+        if "image" not in alert_cols:
+            cur.execute("ALTER TABLE alerts ADD COLUMN image TEXT")
+
         cur.execute("UPDATE users SET email = lower(email) WHERE email != lower(email)")
         cur.execute("UPDATE users SET is_active = 1 WHERE is_active IS NULL")
         conn.commit()

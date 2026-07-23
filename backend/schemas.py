@@ -216,6 +216,8 @@ class AlertCreate(BaseModel):
     camera: Optional[str] = None
     session_id: Optional[str] = None
     notes: Optional[str] = None
+    image: Optional[str] = None  # base64 data URL of the face crop, if available
+
 
 
 class AlertOut(BaseModel):
@@ -227,13 +229,13 @@ class AlertOut(BaseModel):
     created_at: datetime
     status: str
     notes: Optional[str]
+    image: Optional[str] = None
     model_config = {"from_attributes": True}
 
 
 class AlertStatusUpdate(BaseModel):
     status: Literal["Open","Resolved","Ignored"]
     notes: Optional[str] = None
-
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 

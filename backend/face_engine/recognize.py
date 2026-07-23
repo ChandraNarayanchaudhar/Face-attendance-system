@@ -22,6 +22,7 @@ Usage:
 import os
 import sys
 import cv2
+import base64
 import argparse
 import numpy as np
 import requests
@@ -51,6 +52,7 @@ API_URL             = "http://127.0.0.1:8000/api"
 PRESENT_WINDOW_MINS = 5     # within 5 mins = Present
 EARLY_LEAVE_MINS    = 10    # leave 10+ mins before end = Absent
 COOLDOWN_SECS       = 30    # cooldown between detections
+STATUS_POLL_SECS    = 10    # how often to check if admin manually ended the session
 PROCESS_EVERY_N     = 3     # process every 3rd frame
 MIN_VOTES           = 1    # need 2+ votes to confirm identity
 HOG_THRESHOLD       = 0.55  # HOG distance threshold
@@ -92,6 +94,7 @@ class VotingRecognitionEngine:
         self.last_seen   = {}
         self.marked_set  = set()
         self.session_done = False
+        self.last_status_poll = None
 
         # Recognition stats for display
         self.stats = {
@@ -155,6 +158,30 @@ class VotingRecognitionEngine:
             return False
         return datetime.now() > self._parse_time(self.session_info["end_time"])
 
+    def _was_ended_by_admin(self):
+        """
+        Poll the backend (at most every STATUS_POLL_SECS) to check if an
+        admin manually ended this session from the dashboard. Local clock
+        comparison (_session_ended) can't detect that — only the backend
+        knows the real status.
+        """
+        if not self.session_id:
+            return False
+        now = datetime.now()
+        if self.last_status_poll and (now - self.last_status_poll).total_seconds() < STATUS_POLL_SECS:
+            return False
+        self.last_status_poll = now
+        try:
+            r = requests.get(
+                f"{API_URL}/sessions/{self.session_id}",
+                headers=self._headers(), timeout=5
+            )
+            if r.status_code == 200:
+                return r.json().get("status") == "Completed"
+        except Exception:
+            pass
+        return False
+
     def _in_cooldown(self, key):
         if key not in self.last_seen:
             return False
@@ -205,11 +232,20 @@ class VotingRecognitionEngine:
         except Exception as e:
             print(f"  ❌ Update error: {e}")
 
-    def _alert(self, atype, severity):
+    def _alert(self, atype, severity, face_img_bgr=None):
+        image_b64 = None
+        if face_img_bgr is not None and getattr(face_img_bgr, "size", 0) > 0:
+            try:
+                ok, buf = cv2.imencode(".jpg", face_img_bgr)
+                if ok:
+                    image_b64 = "data:image/jpeg;base64," + base64.b64encode(buf).decode("utf-8")
+            except Exception:
+                pass
         try:
             requests.post(f"{API_URL}/alerts", json={
                 "type": atype, "severity": severity,
                 "camera": self.camera_name, "session_id": self.session_id,
+                "image": image_b64,
             }, headers=self._headers(), timeout=5)
         except Exception:
             pass
@@ -357,14 +393,14 @@ class VotingRecognitionEngine:
             final_conf  = conf_scores[winner]
             if not self._in_cooldown(f"votelog_{winner}"):
                 self.last_seen[f"votelog_{winner}"] = datetime.now()
-            print(f"  🗳️  VOTES: {vote_count}/3 → CONFIRMED: {winner_name} ({int(final_conf*100)}%)")
+                print(f"  🗳️  VOTES: {vote_count}/3 → CONFIRMED: {winner_name} ({int(final_conf*100)}%)")
             return winner, winner_name, final_conf, algo_results
         else:
             # Only 1 algorithm agreed = UNCERTAIN = treat as Unknown
             self.stats["uncertain"] += 1
             if not self._in_cooldown("votelog_uncertain"):
                 self.last_seen["votelog_uncertain"] = datetime.now()
-            print(f"  🗳️  VOTES: {vote_count}/3 → UNCERTAIN → rejected")
+                print(f"  🗳️  VOTES: {vote_count}/3 → UNCERTAIN → rejected")
             return None, "Uncertain", 0.0, algo_results
 
     # ── Gate mode ─────────────────────────────────────────────────────────────
@@ -402,8 +438,9 @@ class VotingRecognitionEngine:
                 if not self._in_cooldown(f"unknown_gate"):
                     self.last_seen["unknown_gate"] = now
                     print(f"  🔴 GATE: {label}")
+                    face_crop = frame[max(0,top):bottom, max(0,left):right].copy()
                     Thread(target=self._alert,
-                           args=("Unknown face", "High")).start()
+                           args=("Unknown face", "High", face_crop)).start()
                     Thread(target=self._feed,
                            args=(f"⚠️ {label} • {self.camera_name}", "danger")).start()
 
@@ -481,8 +518,9 @@ class VotingRecognitionEngine:
                 label = "UNKNOWN" if name == "Unknown" else "UNCERTAIN"
                 if not self._in_cooldown("unknown_class"):
                     self.last_seen["unknown_class"] = now
+                    face_crop = frame[max(0,top):bottom, max(0,left):right].copy()
                     Thread(target=self._alert,
-                           args=("Unknown face", "Medium")).start()
+                           args=("Unknown face", "Medium", face_crop)).start()
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
                 cv2.putText(frame, label,
                             (left, top-8),
@@ -579,8 +617,12 @@ class VotingRecognitionEngine:
 
                 if self.mode == "class" and self._session_ended() and not session_ended_notified:
                     session_ended_notified = True
-                    print("\n⏰ Session ended!")
+                    print("\n⏰ Session ended (time reached)!")
                     Thread(target=self._end_session).start()
+
+                if self.mode == "class" and self._was_ended_by_admin():
+                    print("\n🛑 Session was manually ended by admin — stopping camera.")
+                    break
 
                 # ── Overlays ───────────────────────────────────────────────
                 mode_label = "🚪 GATE MODE" if self.mode == "gate" else "📚 CLASS MODE"

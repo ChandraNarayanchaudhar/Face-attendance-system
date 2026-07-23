@@ -224,17 +224,6 @@ export default function LiveMonitorPage() {
                   </div>
                 </div>
               ))}
-              <div className="rounded-2xl border bg-muted/30 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <UserCheck className="h-4 w-4 text-primary" />
-                  Tip
-                </div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  This view shows live recognition events from the database and
-                  alerts (no baked demo data). Use the face-recognition workers
-                  to push real events.
-                </div>
-              </div>
             </CardContent>
           </Card>
         </div>
